@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getVideo, listVideoProducts, createVideoProduct, deleteProduct, replaceProductLink,
-  markProductFixed, listDomains, getConfig, checkVideoLinks, type ProductPayload
+  markProductFixed, toggleProductMonitoring, listDomains, getConfig, checkVideoLinks,
+  type ProductPayload
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -17,8 +18,58 @@ const MARKETPLACES = [
 type MarketplaceKey = typeof MARKETPLACES[number]['key'];
 
 const EMPTY = (marketplace: MarketplaceKey): ProductPayload => ({
-  title: '', affiliate_url: '', marketplace, position: '', domain_id: null,
+  title: '', affiliate_url: '', marketplace, position: '', domain_id: null, short_path: '',
 });
+
+// ─── Status badge ──────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<string, { label: string; icon: string; cls: string }> = {
+  ok:           { label: 'OK',             icon: '✅', cls: 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700/50' },
+  broken:       { label: 'Quebrado',       icon: '❌', cls: 'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/50' },
+  human_review: { label: 'Revisão humana', icon: '🟠', cls: 'text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700/50' },
+  unknown:      { label: 'Desconhecido',   icon: '🟡', cls: 'text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700/50' },
+};
+
+function StatusBadge({ status, code }: { status: string; code?: number | null }) {
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.unknown;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded border ${cfg.cls}`}>
+      <span>{cfg.icon}</span>
+      {cfg.label}
+      {code && status === 'ok' ? ` (${code})` : ''}
+    </span>
+  );
+}
+
+function errorDesc(code: number | null) {
+  if (!code) return 'Sem resposta / timeout';
+  if (code === 404) return 'Página não encontrada (404)';
+  if (code === 410) return 'Produto removido (410)';
+  if (code === 503) return 'Serviço indisponível (503)';
+  if (code >= 500) return `Erro do servidor (${code})`;
+  if (code >= 400) return `Erro HTTP ${code}`;
+  return `HTTP ${code}`;
+}
+
+function RelativeTime({ iso }: { iso: string | null | undefined }) {
+  if (!iso) return <span className={s.textMuted}>nunca</span>;
+  const date = new Date(iso);
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+  const label = mins < 1 ? 'agora mesmo' : mins < 60 ? `há ${mins}min` : hours < 24 ? `há ${hours}h` : `há ${days}d`;
+  return <span title={date.toLocaleString('pt-BR')}>{label}</span>;
+}
+
+function CheckResultBadge({ result }: { result: { ok: boolean; status: number; humanReview?: boolean } }) {
+  if (result.humanReview) return <span className="text-xs font-medium text-orange-500 dark:text-orange-400">🟠 Revisão ({result.status})</span>;
+  return result.ok
+    ? <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">✓ OK ({result.status})</span>
+    : <span className="text-xs font-medium text-red-500 dark:text-red-400">✗ Quebrado ({result.status || 'timeout'})</span>;
+}
+
+// ─── Copy button ───────────────────────────────────────────────────────────────
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -34,6 +85,14 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+// ─── URI sanitizer ─────────────────────────────────────────────────────────────
+
+function sanitizeUri(raw: string): string {
+  return raw.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '').slice(0, 128);
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const videoId = Number(id);
@@ -42,28 +101,28 @@ export default function CampaignDetail() {
   const navigate = useNavigate();
   const fixProductId = Number(searchParams.get('fix')) || null;
 
-  const video    = useQuery({ queryKey: ['video', videoId],         queryFn: () => getVideo(videoId) });
+  const video    = useQuery({ queryKey: ['video', videoId],          queryFn: () => getVideo(videoId) });
   const products = useQuery({ queryKey: ['video-products', videoId], queryFn: () => listVideoProducts(videoId) });
-  const domains  = useQuery({ queryKey: ['domains'],                queryFn: listDomains });
-  const config   = useQuery({ queryKey: ['config'],                 queryFn: getConfig, staleTime: Infinity });
+  const domains  = useQuery({ queryKey: ['domains'],                 queryFn: listDomains });
+  const config   = useQuery({ queryKey: ['config'],                  queryFn: getConfig, staleTime: Infinity });
 
-  const [showAdd, setShowAdd]       = useState(false);
-  const [addMkt, setAddMkt]         = useState<MarketplaceKey>('mercadolivre');
-  const [form, setForm]             = useState<ProductPayload>(EMPTY('mercadolivre'));
-  const [addError, setAddError]     = useState('');
+  const [showAdd, setShowAdd]   = useState(false);
+  const [addMkt, setAddMkt]     = useState<MarketplaceKey>('mercadolivre');
+  const [form, setForm]         = useState<ProductPayload>(EMPTY('mercadolivre'));
+  const [addError, setAddError] = useState('');
 
-  const [replacingId, setReplacingId] = useState<number | null>(null);
-  const [newUrl, setNewUrl]           = useState('');
-  const [replaceError, setReplaceError] = useState('');
+  const [replacingId, setReplacingId]     = useState<number | null>(null);
+  const [newUrl, setNewUrl]               = useState('');
+  const [replaceError, setReplaceError]   = useState('');
 
   const [justFixedId, setJustFixedId] = useState<number | null>(null);
 
   const [checkResult, setCheckResult] = useState<null | {
     checked: number; broken: number;
-    results: { id: number; title: string; position: string; marketplace: string; url: string; ok: boolean; status: number }[];
+    results: { id: number; title: string; position: string; marketplace: string; url: string; ok: boolean; status: number; humanReview?: boolean }[];
   }>(null);
 
-  // Scroll to highlighted product when fix flow is active
+  // Scroll to fix target after products load
   useEffect(() => {
     if (!fixProductId || products.isLoading) return;
     const el = document.getElementById(`product-${fixProductId}`);
@@ -81,7 +140,11 @@ export default function CampaignDetail() {
   });
 
   const addProduct = useMutation({
-    mutationFn: () => createVideoProduct(videoId, { ...form, position: '' }),
+    mutationFn: () => createVideoProduct(videoId, {
+      ...form,
+      position: '',
+      short_path: sanitizeUri(form.short_path ?? '').length >= 2 ? sanitizeUri(form.short_path ?? '') : undefined,
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['video-products', videoId] }); setShowAdd(false); },
     onError: (e: any) => setAddError(e.response?.data?.message || 'Erro ao adicionar link'),
   });
@@ -95,6 +158,11 @@ export default function CampaignDetail() {
     mutationFn: ({ pid, url }: { pid: number; url: string }) => replaceProductLink(pid, url),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['video-products', videoId] }); setReplacingId(null); setNewUrl(''); },
     onError: (e: any) => setReplaceError(e.response?.data?.message || 'URL inválida'),
+  });
+
+  const monitoringToggle = useMutation({
+    mutationFn: ({ pid, enabled }: { pid: number; enabled: boolean }) => toggleProductMonitoring(pid, enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['video-products', videoId] }),
   });
 
   const checkLinks = useMutation({
@@ -112,12 +180,18 @@ export default function CampaignDetail() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function fullShortUrl(p: any): string {
-    const base = p.domain_hostname
-      ? `https://${p.domain_hostname}`
-      : (config.data?.publicBaseUrl ?? 'http://localhost:4000');
-    return `${base}/r/${p.short_path}`;
+  function shortUrlFor(domainHostname: string | null | undefined, shortPath: string): string | null {
+    if (!domainHostname) return null;
+    return `https://${domainHostname}/r/${shortPath}`;
   }
+
+  // For the add form preview
+  const previewDomain = domains.data?.find((d: any) => d.id === form.domain_id);
+  const previewUri = sanitizeUri(form.short_path ?? '');
+  const previewBase = previewDomain
+    ? `https://${previewDomain.hostname}`
+    : (config.data?.publicBaseUrl ?? 'http://localhost:4000');
+  const previewUrl = previewUri.length >= 2 ? `${previewBase}/r/${previewUri}` : null;
 
   const productList = products.data ?? [];
 
@@ -125,16 +199,9 @@ export default function CampaignDetail() {
     return productList.filter((p: any) => (p.marketplace ?? '').toLowerCase() === marketplace);
   }
 
-  // Legacy products (top1-5 from before the marketplace grouping)
   const legacyProducts = productList.filter((p: any) =>
     ['top1','top2','top3','top4','top5'].includes(p.position ?? '')
   );
-
-  function statusBadge(result: { ok: boolean; status: number }) {
-    return result.ok
-      ? <span className="text-xs font-medium text-green-600 dark:text-green-400">✓ OK ({result.status})</span>
-      : <span className="text-xs font-medium text-red-500 dark:text-red-400">✗ Quebrado ({result.status || 'timeout'})</span>;
-  }
 
   return (
     <div className={s.page}>
@@ -172,14 +239,14 @@ export default function CampaignDetail() {
           {fixProductId && !justFixedId && (
             <div className={`${s.alertWarn} mb-6 flex items-center justify-between`}>
               <span>
-                🔗 <strong>Modo correção:</strong> encontre o produto abaixo, troque o link afiliado e depois clique em <strong>Confirmar correção</strong>.
+                🔗 <strong>Modo correção:</strong> encontre o produto abaixo, troque o link afiliado e clique em <strong>Confirmar correção</strong>.
               </span>
               <button onClick={() => navigate(`/admin/campaigns/${videoId}`, { replace: true })} className="ml-4 text-xs opacity-60 hover:opacity-100 shrink-0">✕</button>
             </div>
           )}
           {justFixedId && (
             <div className={`${s.alertSuccess} mb-6`}>
-              ✅ Link marcado como corrigido! Redirecionando para links quebrados...
+              ✅ Link marcado como corrigido! Redirecionando...
             </div>
           )}
 
@@ -190,14 +257,14 @@ export default function CampaignDetail() {
                 <span className="font-semibold">
                   {checkResult.broken === 0
                     ? `✅ Todos os ${checkResult.checked} links estão funcionando`
-                    : `❌ ${checkResult.broken} link(s) quebrado(s) de ${checkResult.checked} verificados`}
+                    : `❌ ${checkResult.broken} link(s) com problema de ${checkResult.checked} verificados`}
                 </span>
                 <button onClick={() => setCheckResult(null)} className="text-xs opacity-60 hover:opacity-100">✕</button>
               </div>
               <div className="space-y-1 mt-2">
                 {checkResult.results.map((r) => (
                   <div key={r.id} className="flex items-center gap-3 text-xs">
-                    {statusBadge(r)}
+                    <CheckResultBadge result={r} />
                     <span className={s.textSecondary}>{r.title}</span>
                     <span className={`${s.codeTag} opacity-70`}>{r.position}</span>
                   </div>
@@ -235,9 +302,10 @@ export default function CampaignDetail() {
                   ) : (
                     <div className="space-y-2">
                       {items.map((p: any) => {
-                        const shortUrl = fullShortUrl(p);
+                        const shortUrl = shortUrlFor(p.domain_hostname, p.short_path);
                         const checkRes = checkResult?.results.find((r) => r.id === p.id);
                         const isFixTarget = fixProductId === p.id;
+                        const monitoring = p.monitoring_enabled !== false;
                         return (
                           <div
                             id={`product-${p.id}`}
@@ -246,29 +314,60 @@ export default function CampaignDetail() {
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                {/* Title row */}
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
                                   <span className={`text-xs font-bold px-2 py-0.5 rounded ${mkt.bg} ${mkt.color} border ${mkt.border}`}>
                                     {p.position}
                                   </span>
                                   <span className={`text-xs font-medium ${s.textPrimary}`}>{p.title}</span>
                                   <span className={`text-xs ${s.textMuted}`}>{p.click_count ?? 0} cliques</span>
-                                  {checkRes && statusBadge(checkRes)}
+                                  {checkRes && <CheckResultBadge result={checkRes} />}
                                 </div>
-                                <div className="mt-1 space-y-1">
+
+                                {/* Link rows */}
+                                <div className="space-y-1">
+                                  {shortUrl && (
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xs ${s.textMuted} w-20 shrink-0`}>Link curto:</span>
+                                      <code className={`${s.codeTagBrand} truncate max-w-xs`}>{shortUrl}</code>
+                                      <CopyButton text={shortUrl} />
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-2">
-                                    <span className={`text-xs ${s.textMuted} w-20 shrink-0`}>Link curto:</span>
-                                    <code className={`${s.codeTagBrand} truncate max-w-xs`}>{shortUrl}</code>
-                                    <CopyButton text={shortUrl} />
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-xs ${s.textMuted} w-20 shrink-0`}>Afiliado:</span>
+                                    <span className={`text-xs ${s.textMuted} w-20 shrink-0`}>{shortUrl ? 'Afiliado:' : 'Link:'}</span>
                                     <a href={p.affiliate_url} target="_blank" rel="noopener noreferrer"
                                       className={`text-xs ${s.textSecondary} hover:text-brand-600 dark:hover:text-brand-400 truncate max-w-xs`}>
                                       {p.affiliate_url}
                                     </a>
+                                    {!shortUrl && <CopyButton text={p.affiliate_url} />}
                                   </div>
                                 </div>
+
+                                {/* Status row */}
+                                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                                  <StatusBadge status={p.link_status ?? 'unknown'} code={p.link_last_status_code} />
+                                  <span className={`text-xs ${s.textMuted}`}>
+                                    Verificado: <RelativeTime iso={p.link_last_checked_at} />
+                                  </span>
+                                  {(p.link_status === 'broken') && p.link_last_status_code && (
+                                    <span className="text-xs text-red-600 dark:text-red-400">
+                                      {errorDesc(p.link_last_status_code)}
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => monitoringToggle.mutate({ pid: p.id, enabled: !monitoring })}
+                                    title={monitoring ? 'Desativar monitoramento deste link' : 'Ativar monitoramento deste link'}
+                                    className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
+                                      monitoring
+                                        ? 'text-gray-400 border-gray-200 dark:border-gray-700 hover:text-gray-600'
+                                        : 'text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 line-through'
+                                    }`}
+                                  >
+                                    {monitoring ? '🔔' : '🔕'} Monitor
+                                  </button>
+                                </div>
                               </div>
+
                               <div className="flex items-center gap-2 shrink-0">
                                 <button
                                   onClick={() => { setReplacingId(p.id); setNewUrl(p.affiliate_url); setReplaceError(''); }}
@@ -285,6 +384,7 @@ export default function CampaignDetail() {
                               </div>
                             </div>
 
+                            {/* Replace link inline */}
                             {replacingId === p.id && (
                               <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                                 <p className={`text-xs ${s.textSecondary} mb-2`}>
@@ -303,10 +403,12 @@ export default function CampaignDetail() {
                                 </div>
                               </div>
                             )}
+
+                            {/* Fix flow confirm */}
                             {isFixTarget && !justFixedId && (
                               <div className="mt-3 pt-3 border-t border-red-100 dark:border-red-800/40">
-                                <p className={`text-xs text-red-600 dark:text-red-400 mb-2`}>
-                                  Este é o link quebrado. Troque o link acima se necessário, depois confirme a correção.
+                                <p className="text-xs text-red-600 dark:text-red-400 mb-2">
+                                  Este é o link quebrado. Troque o link acima se necessário e confirme.
                                 </p>
                                 <button
                                   onClick={() => confirmFix.mutate(p.id)}
@@ -334,7 +436,7 @@ export default function CampaignDetail() {
                 </h2>
                 <div className="space-y-2">
                   {legacyProducts.map((p: any) => {
-                    const shortUrl = fullShortUrl(p);
+                    const shortUrl = shortUrlFor(p.domain_hostname, p.short_path);
                     return (
                       <div key={p.id} className={`${s.card} p-4`}>
                         <div className="flex items-start justify-between gap-4">
@@ -344,10 +446,26 @@ export default function CampaignDetail() {
                               <span className={`text-sm font-medium ${s.textPrimary}`}>{p.title}</span>
                               <span className={`text-xs ${s.textMuted}`}>{p.click_count ?? 0} cliques</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs ${s.textMuted} w-20 shrink-0`}>Link curto:</span>
-                              <code className={`${s.codeTagBrand} truncate max-w-xs`}>{shortUrl}</code>
-                              <CopyButton text={shortUrl} />
+                            <div className="space-y-1">
+                              {shortUrl && (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs ${s.textMuted} w-20 shrink-0`}>Link curto:</span>
+                                  <code className={`${s.codeTagBrand} truncate max-w-xs`}>{shortUrl}</code>
+                                  <CopyButton text={shortUrl} />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs ${s.textMuted} w-20 shrink-0`}>{shortUrl ? 'Afiliado:' : 'Link:'}</span>
+                                <a href={p.affiliate_url} target="_blank" rel="noopener noreferrer"
+                                  className={`text-xs ${s.textSecondary} hover:text-brand-600 dark:hover:text-brand-400 truncate max-w-xs`}>
+                                  {p.affiliate_url}
+                                </a>
+                                {!shortUrl && <CopyButton text={p.affiliate_url} />}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <StatusBadge status={p.link_status ?? 'unknown'} code={p.link_last_status_code} />
+                              <span className={`text-xs ${s.textMuted}`}>Verificado: <RelativeTime iso={p.link_last_checked_at} /></span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -389,6 +507,7 @@ export default function CampaignDetail() {
                 </div>
                 <div className={s.modalBody}>
                   {addError && <div className={s.alertError}>{addError}</div>}
+
                   <div>
                     <label className={s.label}>Marketplace</label>
                     <select
@@ -402,27 +521,60 @@ export default function CampaignDetail() {
                       const count = productsFor(form.marketplace ?? 'mercadolivre').length;
                       return count >= 5
                         ? <p className="text-xs text-red-500 mt-1">Limite de 5 links atingido para este marketplace.</p>
-                        : <p className={`${s.hint}`}>{5 - count} slot(s) disponível(is)</p>;
+                        : <p className={s.hint}>{5 - count} slot(s) disponível(is)</p>;
                     })()}
                   </div>
+
                   <div>
                     <label className={s.label}>Nome do produto</label>
                     <input value={form.title} onChange={(e) => field('title', e.target.value)}
                       className={s.input} placeholder="Ex: Câmera Sony A7" />
                   </div>
+
                   <div>
-                    <label className={s.label}>Link afiliado</label>
+                    <label className={s.label}>Link de afiliado *</label>
                     <input value={form.affiliate_url} onChange={(e) => field('affiliate_url', e.target.value)}
                       className={s.inputMono} placeholder="https://..." />
                   </div>
+
+                  {/* Domain + URI row */}
                   <div>
-                    <label className={s.label}>Domínio (opcional)</label>
-                    <select value={form.domain_id ?? ''} onChange={(e) => field('domain_id', e.target.value ? Number(e.target.value) : null)} className={s.select}>
-                      <option value="">Padrão</option>
-                      {(domains.data ?? []).map((d: any) => <option key={d.id} value={d.id}>{d.hostname}</option>)}
-                    </select>
+                    <label className={s.label}>Link curto (opcional)</label>
+                    <div className="flex gap-2 items-center">
+                      <select
+                        value={form.domain_id ?? ''}
+                        onChange={(e) => field('domain_id', e.target.value ? Number(e.target.value) : null)}
+                        className={`${s.select} flex-1`}
+                      >
+                        <option value="">Sem domínio</option>
+                        {(domains.data ?? []).map((d: any) => <option key={d.id} value={d.id}>{d.hostname}</option>)}
+                      </select>
+                      <span className={`text-sm ${s.textMuted} shrink-0`}>/</span>
+                      <input
+                        value={form.short_path ?? ''}
+                        onChange={(e) => field('short_path', sanitizeUri(e.target.value))}
+                        className={`${s.inputMono} flex-1`}
+                        placeholder="MinhaNikeAmazon"
+                      />
+                    </div>
+                    <p className={s.hint}>Somente letras, números, hifens e underscores</p>
                   </div>
+
+                  {/* Real-time preview */}
+                  {(previewUri.length >= 2 || form.domain_id) && (
+                    <div className="bg-gray-50 dark:bg-gray-700/40 rounded-lg px-4 py-3">
+                      <p className={`text-xs font-medium ${s.textMuted} mb-1`}>Preview do link curto gerado:</p>
+                      {previewUrl ? (
+                        <p className="text-sm font-mono text-brand-600 dark:text-brand-400 break-all">{previewUrl}</p>
+                      ) : (
+                        <p className={`text-sm ${s.textMuted} italic`}>
+                          {previewBase}/r/<em>[gerado automaticamente]</em>
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
+
                 <div className={s.modalFooter}>
                   <button onClick={() => setShowAdd(false)} className={s.btnSecondary}>Cancelar</button>
                   <button

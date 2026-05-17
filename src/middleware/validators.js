@@ -19,7 +19,7 @@ const productProperties = {
   title:         { type: 'string', minLength: 3, maxLength: 255 },
   description:   { type: 'string', maxLength: 2000 },
   affiliate_url: { type: 'string', format: 'uri' },
-  short_path:    { type: 'string', minLength: 4, maxLength: 128 },
+  short_path:    { type: 'string', minLength: 2, maxLength: 128 },
   marketplace:   { type: 'string', minLength: 1, maxLength: 128 },
   position:      { type: 'string', maxLength: 32 }, // ml-1..5, amz-1..5, shp-1..5, out-1..5, top1..5 (legacy)
   domain_id:     { type: ['string', 'integer'] },

@@ -75,6 +75,28 @@ export default async function healthRoutes(fastify) {
     return reply.send({ status: 'ok' });
   });
 
+  // Toggle per-link monitoring — any authenticated user
+  fastify.patch('/products/:id/monitoring', {
+    preHandler: [authenticateJWT],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['enabled'],
+        properties: { enabled: { type: 'boolean' } },
+        additionalProperties: false,
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { enabled } = request.body;
+    await query(
+      `UPDATE products SET monitoring_enabled = $2, updated_at = now() WHERE id = $1`,
+      [id, enabled]
+    );
+    logger.info({ event: 'product.monitoring_toggled', productId: id, enabled });
+    return reply.send({ status: 'ok' });
+  });
+
   // Snooze product for 24h — any authenticated user
   fastify.post('/products/:id/snooze', {
     preHandler: [authenticateJWT]

@@ -136,6 +136,8 @@ export const markProductFixed = (id: number) =>
   api.post(`/products/${id}/mark-fixed`).then((r) => r.data);
 export const snoozeProduct = (id: number) =>
   api.post(`/products/${id}/snooze`).then((r) => r.data);
+export const toggleProductMonitoring = (id: number, enabled: boolean) =>
+  api.patch(`/products/${id}/monitoring`, { enabled }).then((r) => r.data);
 
 // Admin tools
 export interface LinkCheckItem {
@@ -189,6 +191,7 @@ export interface ProductPayload {
   title: string;
   affiliate_url: string;
   marketplace: string;
+  short_path?: string;
   position?: string;
   domain_id?: number | null;
   description?: string;

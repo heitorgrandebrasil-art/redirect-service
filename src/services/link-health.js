@@ -7,7 +7,71 @@ import {
   buildInlineKeyboard,
 } from './telegram-service.js';
 
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const BOT_UA = 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)';
+const ML_HOSTS = ['mercadolivre.com.br', 'mercadolivre.com', 'ml.com'];
+
+function isMercadoLivreUrl(url) {
+  try {
+    const { hostname } = new URL(url);
+    return ML_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
+  } catch { return false; }
+}
+
+async function checkMercadoLivreUrl(url) {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15_000);
+    const res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': BROWSER_UA,
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    clearTimeout(tid);
+
+    if (res.status === 404 || res.status === 410 || res.status >= 500) {
+      return { ok: false, status: res.status };
+    }
+
+    // Redirect to generic catalog = product removed
+    const finalUrl = res.url ?? url;
+    if (finalUrl.includes('melhores-escolha') || finalUrl.includes('melhores-escolhaa')) {
+      return { ok: false, status: res.status };
+    }
+
+    const html = await res.text();
+
+    // Clear product page indicator
+    if (html.includes('Ir para produto') || html.includes('"itemType":"product"')) {
+      return { ok: true, status: res.status };
+    }
+
+    // Generic/catalog page indicators
+    if (
+      html.includes('Minhas recomenda') ||  // "Minhas recomendações"
+      html.includes('Minhas listas') ||
+      html.includes('melhores-escolha') ||
+      html.includes('Lista de favoritos')
+    ) {
+      return { ok: false, status: res.status };
+    }
+
+    // Could not confirm — mark for human review
+    return { ok: false, status: res.status, humanReview: true };
+  } catch (err) {
+    return { ok: false, status: 0, error: err.message };
+  }
+}
+
 async function checkUrl(url) {
+  if (isMercadoLivreUrl(url)) {
+    return checkMercadoLivreUrl(url);
+  }
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), 10_000);
@@ -15,7 +79,7 @@ async function checkUrl(url) {
       method: 'HEAD',
       redirect: 'follow',
       signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)' },
+      headers: { 'User-Agent': BOT_UA },
     });
     // Some servers (e.g. Shopee) reject HEAD — retry with GET
     if (res.status === 405 || res.status === 501) {
@@ -23,7 +87,7 @@ async function checkUrl(url) {
         method: 'GET',
         redirect: 'follow',
         signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)' },
+        headers: { 'User-Agent': BOT_UA },
       });
     }
     clearTimeout(tid);
@@ -58,6 +122,7 @@ export async function checkAllLinks() {
     LEFT JOIN videos   v  ON v.id  = p.video_id
     LEFT JOIN profiles pr ON pr.id = v.profile_id
     WHERE p.affiliate_url IS NOT NULL AND p.affiliate_url <> ''
+      AND p.monitoring_enabled = true
     ORDER BY p.id
   `);
 
@@ -67,6 +132,10 @@ export async function checkAllLinks() {
 
   for (const p of products) {
     const check = await checkUrl(p.affiliate_url);
+
+    // Always record when the product was last checked
+    await query(`UPDATE products SET link_last_checked_at = now() WHERE id = $1`, [p.id]);
+
     allResults.push({
       id: p.id,
       title: p.product_title,
@@ -79,51 +148,64 @@ export async function checkAllLinks() {
     });
 
     if (!check.ok) {
-      brokenItems.push({ id: p.id, url: p.affiliate_url, status: check.status });
-
-      const wasAlreadyBroken = p.link_status === 'broken';
-      if (!wasAlreadyBroken) {
-        await query(
-          `UPDATE products SET link_status = 'broken', link_broken_at = now(), link_last_status_code = $2 WHERE id = $1`,
-          [p.id, check.status || null]
-        );
-        logger.info({ event: 'link.broken.first', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
+      if (check.humanReview) {
+        // ML page returned 200 but couldn't confirm product exists
+        if (p.link_status !== 'human_review') {
+          await query(
+            `UPDATE products SET link_status = 'human_review', link_last_status_code = $2 WHERE id = $1`,
+            [p.id, check.status || null]
+          );
+          logger.info({ event: 'link.human_review', productId: p.id, url: p.affiliate_url });
+        }
+        // Not treated as "broken" for Telegram purposes
       } else {
-        // Update status code on each check so it stays fresh
-        await query(`UPDATE products SET link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
-        logger.info({ event: 'link.broken', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
-      }
+        brokenItems.push({ id: p.id, url: p.affiliate_url, status: check.status });
 
-      const isSnoozed = p.snoozed_until && new Date(p.snoozed_until) > new Date();
-      const hasCredentials = !!(p.telegram_bot_token && p.telegram_chat_id);
-      logger.info({ event: 'link.broken.notify_check', productId: p.id, hasCredentials, awaitingConfirmation: p.awaiting_confirmation, isSnoozed: !!isSnoozed });
+        const wasAlreadyBroken = p.link_status === 'broken';
+        if (!wasAlreadyBroken) {
+          await query(
+            `UPDATE products SET link_status = 'broken', link_broken_at = now(), link_last_status_code = $2 WHERE id = $1`,
+            [p.id, check.status || null]
+          );
+          logger.info({ event: 'link.broken.first', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
+        } else {
+          await query(`UPDATE products SET link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
+          logger.info({ event: 'link.broken', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
+        }
 
-      if (hasCredentials && !p.awaiting_confirmation && !isSnoozed) {
-        const base = p.domain_hostname
-          ? `https://${p.domain_hostname}`
-          : config.app.publicBaseUrl;
-        const shortUrl = `${base}/r/${p.short_path}`;
-        const msg = buildBrokenLinkMessage({
-          campaignTitle: p.campaign_title ?? p.product_title,
-          platform: p.platform,
-          marketplace: p.marketplace,
-          profileName: p.profile_name,
-          shortUrl,
-        });
-        const keyboard = buildInlineKeyboard(p.id);
-        const sent = await sendTelegramMessage(p.telegram_bot_token, p.telegram_chat_id, msg, keyboard);
-        if (sent) {
-          await query(`UPDATE products SET awaiting_confirmation = true WHERE id = $1`, [p.id]);
+        const isSnoozed = p.snoozed_until && new Date(p.snoozed_until) > new Date();
+        const hasCredentials = !!(p.telegram_bot_token && p.telegram_chat_id);
+        logger.info({ event: 'link.broken.notify_check', productId: p.id, hasCredentials, awaitingConfirmation: p.awaiting_confirmation, isSnoozed: !!isSnoozed });
+
+        if (hasCredentials && !p.awaiting_confirmation && !isSnoozed) {
+          const base = p.domain_hostname
+            ? `https://${p.domain_hostname}`
+            : config.app.publicBaseUrl;
+          const shortUrl = `${base}/r/${p.short_path}`;
+          const msg = buildBrokenLinkMessage({
+            campaignTitle: p.campaign_title ?? p.product_title,
+            platform: p.platform,
+            marketplace: p.marketplace,
+            profileName: p.profile_name,
+            shortUrl,
+          });
+          const keyboard = buildInlineKeyboard(p.id);
+          const sent = await sendTelegramMessage(p.telegram_bot_token, p.telegram_chat_id, msg, keyboard);
+          if (sent) {
+            await query(`UPDATE products SET awaiting_confirmation = true WHERE id = $1`, [p.id]);
+          }
         }
       }
     } else {
-      // Link recovered — clear broken state
+      // Link is OK — clear any broken/review state
       if (p.link_status !== 'ok' && p.link_status !== 'unknown') {
         await query(
           `UPDATE products SET link_status = 'ok', awaiting_confirmation = false, snoozed_until = null WHERE id = $1`,
           [p.id]
         );
         logger.info({ event: 'link.recovered', productId: p.id });
+      } else if (p.link_status === 'unknown') {
+        await query(`UPDATE products SET link_status = 'ok' WHERE id = $1`, [p.id]);
       }
     }
   }
@@ -163,17 +245,28 @@ export async function checkLinksForVideo(videoId) {
   for (const p of products) {
     const check = await checkUrl(p.affiliate_url);
 
-    // Update DB status silently (no Telegram for manual per-video checks)
-    if (!check.ok && p.link_status !== 'broken') {
+    await query(`UPDATE products SET link_last_checked_at = now() WHERE id = $1`, [p.id]);
+
+    // Update DB status (no Telegram for manual per-video checks)
+    if (check.humanReview) {
+      if (p.link_status !== 'human_review') {
+        await query(
+          `UPDATE products SET link_status = 'human_review', link_last_status_code = $2 WHERE id = $1`,
+          [p.id, check.status || null]
+        );
+      }
+    } else if (!check.ok && p.link_status !== 'broken') {
       await query(
         `UPDATE products SET link_status = 'broken', link_broken_at = now(), link_last_status_code = $2 WHERE id = $1`,
         [p.id, check.status || null]
       );
-    } else if (check.ok && p.link_status === 'broken') {
+    } else if (check.ok && (p.link_status === 'broken' || p.link_status === 'human_review')) {
       await query(
         `UPDATE products SET link_status = 'ok', awaiting_confirmation = false, snoozed_until = null WHERE id = $1`,
         [p.id]
       );
+    } else if (check.ok && p.link_status === 'unknown') {
+      await query(`UPDATE products SET link_status = 'ok' WHERE id = $1`, [p.id]);
     }
 
     results.push({
@@ -182,10 +275,11 @@ export async function checkLinksForVideo(videoId) {
       position: p.position,
       marketplace: p.marketplace,
       url: p.affiliate_url,
-      ok: check.ok,
+      ok: check.ok && !check.humanReview,
       status: check.status,
+      humanReview: check.humanReview ?? false,
     });
   }
 
-  return { checked: products.length, broken: results.filter(r => !r.ok).length, results };
+  return { checked: products.length, broken: results.filter((r) => !r.ok).length, results };
 }
