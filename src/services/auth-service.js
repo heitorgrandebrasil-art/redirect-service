@@ -1,0 +1,185 @@
+import bcrypt from 'bcryptjs';
+import * as OTPAuth from 'otpauth';
+import QRCode from 'qrcode';
+import crypto from 'crypto';
+import { query } from '../db.js';
+import { NotFoundError, UnauthorizedError, ConflictError } from '../errors.js';
+import { logAudit } from '../audit.js';
+import config from '../config.js';
+
+const PUBLIC_USER_COLS = 'id, email, role, totp_enabled, created_at, updated_at';
+
+export async function findUserById(id) {
+  const result = await query(`SELECT ${PUBLIC_USER_COLS} FROM users WHERE id = $1`, [id]);
+  return result.rows[0] || null;
+}
+
+export async function findUserByEmail(email) {
+  const result = await query('SELECT * FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+  return result.rows[0] || null;
+}
+
+export async function countUsers() {
+  const result = await query('SELECT COUNT(*)::int AS total FROM users');
+  return result.rows[0].total;
+}
+
+export async function createUser({ email, password, role = 'operator' }) {
+  const existing = await query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+  if (existing.rowCount) throw new ConflictError('Email already registered');
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const result = await query(
+    `INSERT INTO users (email, password_hash, role)
+     VALUES ($1, $2, $3)
+     RETURNING ${PUBLIC_USER_COLS}`,
+    [email.toLowerCase().trim(), passwordHash, role]
+  );
+  logAudit('user.created', { userId: result.rows[0].id, email, role });
+  return result.rows[0];
+}
+
+export async function verifyPassword(user, password) {
+  return bcrypt.compare(password, user.password_hash);
+}
+
+export async function setupTOTP(userId) {
+  const result = await query('SELECT id, email FROM users WHERE id = $1', [userId]);
+  if (!result.rowCount) throw new NotFoundError('User not found');
+  const user = result.rows[0];
+
+  const secret = new OTPAuth.Secret({ size: 20 });
+  const totp = new OTPAuth.TOTP({
+    issuer: config.appName,
+    label: user.email,
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret
+  });
+
+  const secretBase32 = secret.base32;
+  const uri = totp.toString();
+  const qrCodeDataUrl = await QRCode.toDataURL(uri);
+
+  await query(
+    'UPDATE users SET totp_secret = $1, totp_enabled = false, updated_at = now() WHERE id = $2',
+    [secretBase32, userId]
+  );
+
+  return { secret: secretBase32, uri, qrCodeDataUrl };
+}
+
+export async function enableTOTP(userId, code) {
+  const result = await query('SELECT totp_secret FROM users WHERE id = $1', [userId]);
+  if (!result.rowCount) throw new NotFoundError('User not found');
+  const { totp_secret } = result.rows[0];
+  if (!totp_secret) throw new ConflictError('TOTP not configured. Call setup first.');
+
+  if (!verifyTOTPToken(totp_secret, code)) {
+    throw new UnauthorizedError('Invalid TOTP code');
+  }
+
+  await query('UPDATE users SET totp_enabled = true, updated_at = now() WHERE id = $1', [userId]);
+  const codes = await _generateBackupCodes(userId);
+  logAudit('user.totp.enabled', { userId });
+  return codes;
+}
+
+export async function disableTOTP(userId) {
+  await query(
+    'UPDATE users SET totp_enabled = false, totp_secret = NULL, updated_at = now() WHERE id = $1',
+    [userId]
+  );
+  await query('DELETE FROM backup_codes WHERE user_id = $1', [userId]);
+  logAudit('user.totp.disabled', { userId });
+}
+
+function verifyTOTPToken(secret, code) {
+  const totp = new OTPAuth.TOTP({
+    secret: OTPAuth.Secret.fromBase32(secret),
+    digits: 6,
+    period: 30,
+    algorithm: 'SHA1'
+  });
+  return totp.validate({ token: code.replace(/\s/g, ''), window: 1 }) !== null;
+}
+
+export async function verifyTOTPCode(user, code) {
+  if (!user.totp_secret) return false;
+  return verifyTOTPToken(user.totp_secret, code);
+}
+
+async function _generateBackupCodes(userId) {
+  await query('DELETE FROM backup_codes WHERE user_id = $1', [userId]);
+  const codes = [];
+  for (let i = 0; i < 10; i++) {
+    codes.push(crypto.randomBytes(5).toString('hex'));
+  }
+  for (const code of codes) {
+    const hash = await bcrypt.hash(code, 10);
+    await query('INSERT INTO backup_codes (user_id, code_hash) VALUES ($1, $2)', [userId, hash]);
+  }
+  return codes;
+}
+
+export async function verifyBackupCode(userId, code) {
+  const normalized = code.replace(/\s/g, '').toLowerCase();
+  const result = await query(
+    'SELECT * FROM backup_codes WHERE user_id = $1 AND used = false',
+    [userId]
+  );
+  for (const row of result.rows) {
+    if (await bcrypt.compare(normalized, row.code_hash)) {
+      await query('UPDATE backup_codes SET used = true, used_at = now() WHERE id = $1', [row.id]);
+      logAudit('user.backup_code.used', { userId });
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function regenerateBackupCodes(userId) {
+  const codes = await _generateBackupCodes(userId);
+  logAudit('user.backup_codes.regenerated', { userId });
+  return codes;
+}
+
+export async function listUsers() {
+  const result = await query(
+    `SELECT ${PUBLIC_USER_COLS} FROM users ORDER BY created_at DESC`
+  );
+  return result.rows;
+}
+
+export async function deleteUser(id) {
+  const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+  if (!result.rowCount) throw new NotFoundError('User not found');
+  logAudit('user.deleted', { userId: id });
+  return { id };
+}
+
+export async function updateUserRole(id, role) {
+  const result = await query(
+    `UPDATE users SET role = $1, updated_at = now() WHERE id = $2
+     RETURNING ${PUBLIC_USER_COLS}`,
+    [role, id]
+  );
+  if (!result.rowCount) throw new NotFoundError('User not found');
+  logAudit('user.role.updated', { userId: id, role });
+  return result.rows[0];
+}
+
+export async function changePassword(userId, currentPassword, newPassword) {
+  const result = await query('SELECT * FROM users WHERE id = $1', [userId]);
+  if (!result.rowCount) throw new NotFoundError('User not found');
+  const user = result.rows[0];
+
+  if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
+    throw new UnauthorizedError('Current password is incorrect');
+  }
+
+  const hash = await bcrypt.hash(newPassword, 12);
+  await query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [hash, userId]);
+  logAudit('user.password.changed', { userId });
+}

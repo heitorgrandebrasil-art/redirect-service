@@ -43,6 +43,15 @@ const config = {
     internalServiceKey: env.INTERNAL_SERVICE_KEY || 'change-me-secret',
     headerName: 'x-service-key'
   },
+  jwt: {
+    secret: env.JWT_SECRET || 'change-me-jwt-secret-min-32-chars-long',
+    accessTokenExpiry: env.JWT_ACCESS_EXPIRY || '8h',
+    tempTokenExpiry: '5m'
+  },
+  adminSetup: {
+    email: env.ADMIN_SETUP_EMAIL || '',
+    password: env.ADMIN_SETUP_PASSWORD || ''
+  },
   db: {
     user: env.PGUSER || env.DB_USER || 'postgres',
     password: env.PGPASSWORD || env.DB_PASSWORD || '',
@@ -52,7 +61,7 @@ const config = {
     max: Number(env.PGPOOL_MAX || 10),
     idleTimeoutMillis: Number(env.PG_IDLE_TIMEOUT || 30000)
   },
-  appName: env.APP_NAME || 'redirect-service'
+  appName: env.APP_NAME || 'Redirect Admin'
 };
 
 requireProductionValue('INTERNAL_SERVICE_KEY', config.auth.internalServiceKey, [

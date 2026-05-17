@@ -1,4 +1,5 @@
 import * as redirectService from '../services/redirect-service.js';
+import config from '../config.js';
 
 function wantsJson(request) {
   const accept = request.headers.accept || '';
@@ -38,11 +39,34 @@ function sendMessage(reply, statusCode, title, message, request) {
 </html>`);
 }
 
+function appendUtmSource(targetUrl, source) {
+  if (!source) return targetUrl;
+  try {
+    const url = new URL(targetUrl);
+    if (!url.searchParams.has('utm_source')) {
+      url.searchParams.set('utm_source', source);
+    }
+    return url.toString();
+  } catch {
+    return targetUrl;
+  }
+}
+
+function detectDevice(userAgent) {
+  if (!userAgent) return 'unknown';
+  const ua = userAgent.toLowerCase();
+  if (/mobile|android|iphone|ipod|blackberry|windows phone/.test(ua)) return 'mobile';
+  if (/tablet|ipad/.test(ua)) return 'tablet';
+  return 'desktop';
+}
+
 function requestMetadata(request) {
+  const userAgent = request.headers['user-agent'] || null;
   return {
     ip: request.ip,
-    userAgent: request.headers['user-agent'] || null,
-    referer: request.headers.referer || request.headers.referrer || null
+    userAgent,
+    referer: request.headers.referer || request.headers.referrer || null,
+    deviceType: detectDevice(userAgent)
   };
 }
 
@@ -80,7 +104,9 @@ export function registerPublicRedirectRoutes(fastify) {
       statusCode: 302
     });
 
-    return reply.redirect(302, redirect.target_url);
+    const utmSource = request.hostname || new URL(config.app.publicBaseUrl).hostname;
+    const finalUrl = appendUtmSource(redirect.target_url, utmSource);
+    return reply.redirect(302, finalUrl);
   }
 
   fastify.get('/r/:short_path', handleRedirect);

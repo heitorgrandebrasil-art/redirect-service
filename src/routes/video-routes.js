@@ -1,6 +1,7 @@
 import { authenticateServiceKey } from '../middleware/auth.js';
 import { createVideoSchema, updateVideoSchema, createProductSchema } from '../middleware/validators.js';
 import * as videoService from '../services/video-service.js';
+import { checkLinksForVideo } from '../services/link-health.js';
 
 export default async function videoRoutes(fastify) {
   fastify.addHook('preHandler', authenticateServiceKey);
@@ -38,5 +39,10 @@ export default async function videoRoutes(fastify) {
   fastify.post('/videos/:id/products', { schema: createProductSchema }, async (request, reply) => {
     const product = await videoService.createProductForVideo(request.params.id, request.body);
     return reply.status(201).send({ status: 'ok', data: product });
+  });
+
+  fastify.post('/videos/:id/check-links', async (request, reply) => {
+    const result = await checkLinksForVideo(request.params.id);
+    return reply.send({ status: 'ok', data: result });
   });
 }

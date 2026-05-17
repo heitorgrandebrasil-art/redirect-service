@@ -1,9 +1,10 @@
 import { query } from '../db.js';
 import { NotFoundError } from '../errors.js';
 import { logAudit } from '../audit.js';
-import { createProduct } from './product-service.js';
+import { createProduct, nextPositionForMarketplace } from './product-service.js';
+import { ConflictError } from '../errors.js';
 
-const baseColumns = ['id', 'title', 'description', 'platform', 'original_video_url', 'notes', 'publish_date', 'created_at', 'updated_at'];
+const baseColumns = ['id', 'title', 'description', 'platform', 'original_video_url', 'notes', 'publish_date', 'profile_id', 'created_at', 'updated_at'];
 
 export async function ensureVideoCampaignSchema() {
   await query('ALTER TABLE videos ADD COLUMN IF NOT EXISTS original_video_url TEXT');
@@ -52,10 +53,10 @@ export async function getVideo(id) {
 
 export async function createVideo(payload) {
   const result = await query(
-    `INSERT INTO videos (title, description, platform, original_video_url, notes, publish_date)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO videos (title, description, platform, original_video_url, notes, publish_date, profile_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING ${baseColumns.join(', ')}`,
-    [payload.title, payload.description || null, payload.platform || null, payload.original_video_url || null, payload.notes || null, payload.publish_date || null]
+    [payload.title, payload.description || null, payload.platform || null, payload.original_video_url || null, payload.notes || null, payload.publish_date || null, payload.profile_id || null]
   );
   logAudit('video.created', { videoId: result.rows[0].id, title: payload.title });
   return result.rows[0];
@@ -66,7 +67,7 @@ export async function updateVideo(id, payload) {
   const values = [];
   let index = 1;
 
-  for (const key of ['title', 'description', 'platform', 'original_video_url', 'notes', 'publish_date']) {
+  for (const key of ['title', 'description', 'platform', 'original_video_url', 'notes', 'publish_date', 'profile_id']) {
     if (payload[key] !== undefined) {
       fields.push(`${key} = $${index}`);
       values.push(payload[key]);
@@ -104,8 +105,9 @@ export async function deleteVideo(id) {
 export async function listProductsForVideo(videoId) {
   await getVideo(videoId);
   const result = await query(
-    `SELECT p.*, COALESCE(c.click_count, 0)::int AS click_count
+    `SELECT p.*, d.hostname AS domain_hostname, COALESCE(c.click_count, 0)::int AS click_count
      FROM products p
+     LEFT JOIN domains d ON d.id = p.domain_id
      LEFT JOIN redirects r ON r.product_id = p.id
      LEFT JOIN (
        SELECT redirect_id, COUNT(*) AS click_count
@@ -114,14 +116,13 @@ export async function listProductsForVideo(videoId) {
      ) c ON c.redirect_id = r.id
      WHERE p.video_id = $1
      ORDER BY
-       CASE p.position
-         WHEN 'top1' THEN 1
-         WHEN 'top2' THEN 2
-         WHEN 'top3' THEN 3
-         WHEN 'top4' THEN 4
-         WHEN 'top5' THEN 5
-         ELSE 99
+       CASE LOWER(p.marketplace)
+         WHEN 'mercadolivre' THEN 1
+         WHEN 'amazon'       THEN 2
+         WHEN 'shopee'       THEN 3
+         ELSE 4
        END,
+       p.position,
        p.created_at DESC`,
     [videoId]
   );
@@ -130,11 +131,17 @@ export async function listProductsForVideo(videoId) {
 
 export async function createProductForVideo(videoId, productPayload) {
   await getVideo(videoId);
-  const product = await createProduct({
-    ...productPayload,
-    video_id: videoId,
-    marketplace: productPayload.marketplace || 'affiliate'
-  });
+  const marketplace = (productPayload.marketplace || 'outros').toLowerCase();
+
+  let position = productPayload.position;
+  if (!position) {
+    position = await nextPositionForMarketplace(videoId, marketplace);
+    if (!position) {
+      throw new ConflictError(`Limite de links para "${marketplace}" atingido (máximo 5)`);
+    }
+  }
+
+  const product = await createProduct({ ...productPayload, position, video_id: videoId, marketplace });
   logAudit('video.product.created', { videoId, productId: product.id, shortPath: product.short_path });
   return product;
 }

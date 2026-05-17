@@ -3,6 +3,24 @@ import { NotFoundError, ConflictError } from '../errors.js';
 import { logAudit } from '../audit.js';
 import logger from '../logger.js';
 
+// ── In-memory redirect cache (TTL = 5 min) ───────────────────────────────────
+const CACHE_TTL = 5 * 60 * 1000;
+const _cache = new Map(); // shortPath → { value, expiresAt }
+
+function _cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) { _cache.delete(key); return undefined; }
+  return entry.value;
+}
+function _cacheSet(key, value) {
+  _cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL });
+}
+export function invalidateRedirectCache(shortPath) {
+  if (shortPath) _cache.delete(shortPath);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function listRedirects() {
   const result = await query(
     `SELECT r.*, COALESCE(c.click_count, 0)::int AS click_count
@@ -88,14 +106,17 @@ export async function updateRedirect(id, payload) {
   }
 
   logAudit('redirect.updated', { redirectId: id, updates: payload });
+  if (result.rows[0]) invalidateRedirectCache(result.rows[0].short_path);
   return result.rows[0];
 }
 
 export async function deleteRedirect(id) {
+  const existing = await query('SELECT short_path FROM redirects WHERE id = $1', [id]);
   const result = await query('DELETE FROM redirects WHERE id = $1 RETURNING id', [id]);
   if (!result.rowCount) {
     throw new NotFoundError('Redirect not found');
   }
+  if (existing.rowCount) invalidateRedirectCache(existing.rows[0].short_path);
   logAudit('redirect.deleted', { redirectId: id });
   return { id };
 }
@@ -128,6 +149,9 @@ export async function findRedirectForPublicPath(shortPath) {
   const normalized = String(shortPath || '').replace(/^\/+/, '');
   const withLeadingSlash = `/${normalized}`;
 
+  const cached = _cacheGet(normalized);
+  if (cached !== undefined) return cached || null; // false = cached miss
+
   const result = await query(
     `SELECT *
      FROM redirects
@@ -136,14 +160,29 @@ export async function findRedirectForPublicPath(shortPath) {
      LIMIT 1`,
     [normalized, withLeadingSlash]
   );
+  if (result.rowCount) {
+    _cacheSet(normalized, result.rows[0]);
+    return result.rows[0];
+  }
 
-  return result.rowCount ? result.rows[0] : null;
+  // Fallback: product record whose redirect was never created
+  const product = await query(
+    `SELECT id, short_path, affiliate_url AS target_url, true AS active, id AS product_id, domain_id
+     FROM products
+     WHERE short_path = $1 OR short_path = $2
+     ORDER BY CASE WHEN short_path = $1 THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [normalized, withLeadingSlash]
+  );
+  const row = product.rowCount ? product.rows[0] : null;
+  _cacheSet(normalized, row || false); // cache miss as false
+  return row;
 }
 
 export function logRedirectClick(redirect, metadata = {}) {
   query(
-    `INSERT INTO redirect_clicks (redirect_id, short_path, target_url, status_code, ip, user_agent, referer)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    `INSERT INTO redirect_clicks (redirect_id, short_path, target_url, status_code, ip, user_agent, referer, device_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       redirect.id,
       redirect.short_path,
@@ -151,7 +190,8 @@ export function logRedirectClick(redirect, metadata = {}) {
       metadata.statusCode || null,
       metadata.ip || null,
       metadata.userAgent || null,
-      metadata.referer || null
+      metadata.referer || null,
+      metadata.deviceType || null
     ]
   ).catch((error) => {
     logger.debug({

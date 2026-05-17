@@ -1,7 +1,22 @@
 import { query } from '../db.js';
+import config from '../config.js';
+import { authenticateJWT, requireRole } from '../middleware/authenticate.js';
+import { checkAllLinks } from '../services/link-health.js';
 
 export default async function healthRoutes(fastify) {
   fastify.get('/health', async () => ({ status: 'ok', uptime: process.uptime() }));
+
+  // Manual link health check — admin only
+  fastify.post('/admin/check-links', {
+    preHandler: [authenticateJWT, requireRole('admin')]
+  }, async (request, reply) => {
+    const result = await checkAllLinks();
+    return reply.send({ status: 'ok', data: result });
+  });
+
+  fastify.get('/config', async () => ({
+    publicBaseUrl: config.app.publicBaseUrl
+  }));
 
   fastify.get('/ready', async (request, reply) => {
     try {

@@ -1,9 +1,16 @@
 import { query, transaction } from '../db.js';
 import { NotFoundError, ConflictError } from '../errors.js';
 import { logAudit } from '../audit.js';
-import { createRedirect } from './redirect-service.js';
+import { createRedirect, invalidateRedirectCache } from './redirect-service.js';
 
-const positions = ['top1', 'top2', 'top3', 'top4', 'top5'];
+const MARKETPLACE_POSITIONS = {
+  mercadolivre: ['ml-1', 'ml-2', 'ml-3', 'ml-4', 'ml-5'],
+  amazon:       ['amz-1', 'amz-2', 'amz-3', 'amz-4', 'amz-5'],
+  shopee:       ['shp-1', 'shp-2', 'shp-3', 'shp-4', 'shp-5'],
+  outros:       ['out-1', 'out-2', 'out-3', 'out-4', 'out-5'],
+};
+const LEGACY_POSITIONS = ['top1', 'top2', 'top3', 'top4', 'top5'];
+const ALL_POSITIONS = [...LEGACY_POSITIONS, ...Object.values(MARKETPLACE_POSITIONS).flat()];
 
 function slugify(value) {
   return String(value || '')
@@ -15,10 +22,19 @@ function slugify(value) {
     .slice(0, 80);
 }
 
+function randomSuffix(len = 4) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let r = '';
+  for (let i = 0; i < len; i++) r += chars[Math.floor(Math.random() * chars.length)];
+  return r;
+}
+
 async function uniqueShortPath(seed) {
   const base = slugify(seed) || `product-${Date.now()}`;
-  let candidate = base.length >= 4 ? base : `${base}-link`;
-  let suffix = 2;
+  const root = base.length >= 4 ? base : `${base}-link`;
+
+  // Always append a random suffix to avoid conflicts from the start
+  let candidate = `${root}-${randomSuffix()}`;
 
   while (true) {
     const existing = await query(
@@ -28,18 +44,22 @@ async function uniqueShortPath(seed) {
        LIMIT 1`,
       [candidate]
     );
-
-    if (!existing.rowCount) {
-      return candidate;
-    }
-
-    candidate = `${base}-${suffix}`;
-    suffix += 1;
+    if (!existing.rowCount) return candidate;
+    // Collision (extremely rare) — try again with new suffix
+    candidate = `${root}-${randomSuffix()}`;
   }
 }
 
 function normalizePosition(position) {
-  return positions.includes(position) ? position : null;
+  return position && ALL_POSITIONS.includes(position) ? position : null;
+}
+
+export async function nextPositionForMarketplace(videoId, marketplace) {
+  const key = (marketplace || 'outros').toLowerCase();
+  const slots = MARKETPLACE_POSITIONS[key] ?? MARKETPLACE_POSITIONS.outros;
+  const existing = await query('SELECT position FROM products WHERE video_id = $1', [videoId]);
+  const used = new Set(existing.rows.map((r) => r.position));
+  return slots.find((p) => !used.has(p)) ?? null;
 }
 
 export async function listProducts() {
@@ -158,9 +178,15 @@ export async function replaceAffiliateUrl(productId, newUrl) {
       [newUrl, productId]
     );
 
-    const result = updated.rows[0];
+    // Keep redirect in sync so the short link points to the new affiliate URL
+    await client.query(
+      `UPDATE redirects SET target_url = $1, updated_at = now() WHERE product_id = $2`,
+      [newUrl, productId]
+    );
+    invalidateRedirectCache(product.short_path);
+
     logAudit('product.affiliate_url.replaced', { productId, oldValue: product.affiliate_url, newValue: newUrl });
-    return result;
+    return updated.rows[0];
   });
 }
 

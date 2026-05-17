@@ -26,4 +26,10 @@ export class ConflictError extends ClientError {
   }
 }
 
+export class ForbiddenError extends ClientError {
+  constructor(message = 'Forbidden', details = null) {
+    super(message, 403, 'FORBIDDEN', details);
+  }
+}
+
 export const isClientError = (error) => error instanceof ClientError;
