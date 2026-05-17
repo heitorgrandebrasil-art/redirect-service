@@ -30,6 +30,7 @@ export async function sendTelegramMessage(botToken, chatId, text) {
       logger.warn({ event: 'telegram.send.failed', chatId, description: data.description });
       return false;
     }
+    logger.info({ event: 'telegram.send.ok', chatId, messageId: data.result?.message_id });
     return true;
   } catch (err) {
     logger.warn({ event: 'telegram.send.error', chatId, error: err.message });

@@ -3,6 +3,15 @@ import logger from '../logger.js';
 import config from '../config.js';
 import { sendTelegramMessage, buildBrokenLinkMessage } from './telegram-service.js';
 
+// In-memory dedup: don't re-notify the same broken product more than once per 4h
+const NOTIFY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
+const _notifiedAt = new Map();
+function _shouldNotify(productId) {
+  const last = _notifiedAt.get(productId);
+  return !last || Date.now() - last > NOTIFY_COOLDOWN_MS;
+}
+function _markNotified(productId) { _notifiedAt.set(productId, Date.now()); }
+
 async function checkUrl(url) {
   try {
     const controller = new AbortController();
@@ -75,7 +84,10 @@ export async function checkAllLinks() {
       logger.info({ event: 'link.broken', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
       brokenItems.push({ id: p.id, url: p.affiliate_url, status: check.status });
 
-      if (p.telegram_bot_token && p.telegram_chat_id) {
+      const hasCredentials = !!(p.telegram_bot_token && p.telegram_chat_id);
+      logger.info({ event: 'link.broken.notify_check', productId: p.id, hasCredentials, cooldownActive: hasCredentials && !_shouldNotify(p.id) });
+
+      if (hasCredentials && _shouldNotify(p.id)) {
         const base = p.domain_hostname
           ? `https://${p.domain_hostname}`
           : config.app.publicBaseUrl;
@@ -89,7 +101,8 @@ export async function checkAllLinks() {
           shortUrl,
         });
 
-        await sendTelegramMessage(p.telegram_bot_token, p.telegram_chat_id, msg);
+        const sent = await sendTelegramMessage(p.telegram_bot_token, p.telegram_chat_id, msg);
+        if (sent) _markNotified(p.id);
       }
     }
   }
