@@ -7,12 +7,21 @@ async function checkUrl(url) {
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: 'HEAD',
       redirect: 'follow',
       signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)' },
     });
+    // Some servers (e.g. Shopee) reject HEAD — retry with GET
+    if (res.status === 405 || res.status === 501) {
+      res = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)' },
+      });
+    }
     clearTimeout(tid);
     return { ok: res.status < 400, status: res.status };
   } catch (err) {
@@ -28,6 +37,7 @@ export async function checkAllLinks() {
       p.affiliate_url,
       p.short_path,
       p.marketplace,
+      p.position,
       p.domain_id,
       d.hostname     AS domain_hostname,
       v.title        AS campaign_title,
@@ -46,9 +56,21 @@ export async function checkAllLinks() {
 
   const products = result.rows;
   const brokenItems = [];
+  const allResults = [];
 
   for (const p of products) {
     const check = await checkUrl(p.affiliate_url);
+    allResults.push({
+      id: p.id,
+      title: p.product_title,
+      campaign: p.campaign_title ?? '',
+      marketplace: p.marketplace ?? '',
+      position: p.position ?? '',
+      url: p.affiliate_url,
+      ok: check.ok,
+      status: check.status,
+    });
+
     if (!check.ok) {
       logger.info({ event: 'link.broken', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
       brokenItems.push({ id: p.id, url: p.affiliate_url, status: check.status });
@@ -72,7 +94,7 @@ export async function checkAllLinks() {
     }
   }
 
-  return { checked: products.length, broken: brokenItems.length, brokenItems };
+  return { checked: products.length, broken: brokenItems.length, brokenItems, allResults };
 }
 
 export async function checkLinksForVideo(videoId) {

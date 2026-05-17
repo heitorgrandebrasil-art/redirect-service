@@ -39,7 +39,7 @@ class LinkScheduler {
 
     if (last_run) {
       const next = new Date(last_run).getTime() + freqMs;
-      if (next > now) return Math.max(next - now, 60_000);
+      if (next > now) return next - now;
     }
 
     // Overdue or never ran — fire at next preferred_hour

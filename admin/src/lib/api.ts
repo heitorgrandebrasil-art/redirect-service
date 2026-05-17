@@ -101,8 +101,16 @@ export const getAnalyticsOverview = () =>
   api.get('/analytics/overview').then((r) => r.data.data);
 
 // Admin tools
+export interface LinkCheckItem {
+  id: number; title: string; campaign: string;
+  marketplace: string; position: string; url: string; ok: boolean; status: number;
+}
 export const checkLinks = () =>
-  api.post('/admin/check-links').then((r) => r.data.data as { checked: number; broken: number; brokenItems: { id: number; url: string; status: number }[] });
+  api.post('/admin/check-links').then((r) => r.data.data as {
+    checked: number; broken: number;
+    brokenItems: { id: number; url: string; status: number }[];
+    allResults: LinkCheckItem[];
+  });
 
 export const checkVideoLinks = (id: number) =>
   api.post(`/videos/${id}/check-links`).then((r) => r.data.data as {

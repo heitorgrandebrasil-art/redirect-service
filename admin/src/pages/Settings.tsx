@@ -1,9 +1,9 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import {
   setupTotp, enableTotp, disableTotp, regenerateBackupCodes, changePassword,
-  checkLinks, getSettings, updateLinkMonitor, updateOpenAIKey,
+  checkLinks, getSettings, updateLinkMonitor, updateOpenAIKey, LinkCheckItem,
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -69,7 +69,7 @@ export default function Settings() {
     onSuccess: (data) => setBackupCodes(data.backupCodes)
   });
 
-  const [linkCheckResult, setLinkCheckResult] = useState<{ checked: number; broken: number; brokenItems: any[] } | null>(null);
+  const [linkCheckResult, setLinkCheckResult] = useState<{ checked: number; broken: number; brokenItems: any[]; allResults: LinkCheckItem[] } | null>(null);
   const linkCheck = useMutation({
     mutationFn: checkLinks,
     onSuccess: (data) => setLinkCheckResult(data),
@@ -81,20 +81,26 @@ export default function Settings() {
   const [monitorFreq, setMonitorFreq]       = useState(24);
   const [monitorHour, setMonitorHour]       = useState(8);
   const [monitorSaved, setMonitorSaved]     = useState(false);
+  const [monitorError, setMonitorError]     = useState('');
 
-  // Sync state from fetched settings
-  if (settingsQ.data && !monitorSaved && !settingsQ.isFetching) {
+  // Sync only when server data arrives or changes — NOT on every render
+  useEffect(() => {
+    if (!settingsQ.data) return;
     const m = settingsQ.data.monitor;
-    if (m.enabled !== monitorEnabled || m.frequency_hours !== monitorFreq || m.preferred_hour !== monitorHour) {
-      setMonitorEnabled(m.enabled);
-      setMonitorFreq(m.frequency_hours);
-      setMonitorHour(m.preferred_hour);
-    }
-  }
+    setMonitorEnabled(m.enabled);
+    setMonitorFreq(m.frequency_hours);
+    setMonitorHour(m.preferred_hour);
+  }, [settingsQ.data]);
 
   const saveMonitor = useMutation({
     mutationFn: () => updateLinkMonitor({ enabled: monitorEnabled, frequency_hours: monitorFreq, preferred_hour: monitorHour }),
-    onSuccess: () => { setMonitorSaved(true); settingsQ.refetch(); setTimeout(() => setMonitorSaved(false), 2500); },
+    onSuccess: () => {
+      setMonitorSaved(true);
+      setMonitorError('');
+      settingsQ.refetch();
+      setTimeout(() => setMonitorSaved(false), 2500);
+    },
+    onError: (e: any) => setMonitorError(e.response?.data?.message || 'Erro ao salvar configurações'),
   });
 
   // OpenAI key
@@ -170,6 +176,7 @@ export default function Settings() {
               <div>
                 <label className={s.label}>Frequência</label>
                 <select value={monitorFreq} onChange={(e) => setMonitorFreq(Number(e.target.value))} className={s.select}>
+                  <option value={0.00833}>30 segundos (teste)</option>
                   <option value={1}>A cada 1 hora</option>
                   <option value={6}>A cada 6 horas</option>
                   <option value={12}>A cada 12 horas</option>
@@ -191,11 +198,14 @@ export default function Settings() {
                 Última verificação: {new Date(settingsQ.data.monitor.last_run).toLocaleString('pt-BR')}
               </p>
             )}
-            <div className="flex items-center gap-3">
-              <button onClick={() => saveMonitor.mutate()} disabled={saveMonitor.isPending} className={s.btnPrimary}>
-                {saveMonitor.isPending ? 'Salvando...' : 'Salvar configurações'}
-              </button>
-              {monitorSaved && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo</span>}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <button onClick={() => saveMonitor.mutate()} disabled={saveMonitor.isPending} className={s.btnPrimary}>
+                  {saveMonitor.isPending ? 'Salvando...' : 'Salvar configurações'}
+                </button>
+                {monitorSaved && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo</span>}
+              </div>
+              {monitorError && <div className={s.alertError}>{monitorError}</div>}
             </div>
           </div>
         </section>
@@ -254,21 +264,33 @@ export default function Settings() {
             {linkCheck.isPending ? 'Verificando...' : 'Verificar agora'}
           </button>
           {linkCheckResult && (
-            <div className="mt-4">
-              {linkCheckResult.broken === 0 ? (
-                <div className={s.alertSuccess}>
-                  ✅ Todos os {linkCheckResult.checked} links estão funcionando.
-                </div>
-              ) : (
-                <div className={s.alertError}>
-                  ❌ {linkCheckResult.broken} link(s) quebrado(s) de {linkCheckResult.checked} verificados.
-                  <ul className="mt-2 space-y-1 text-xs">
-                    {linkCheckResult.brokenItems.map((item: any) => (
-                      <li key={item.id} className="font-mono truncate">
-                        {item.url} <span className="opacity-70">(HTTP {item.status || 'erro'})</span>
-                      </li>
+            <div className="mt-4 space-y-3">
+              <div className={linkCheckResult.broken === 0 ? s.alertSuccess : s.alertError}>
+                {linkCheckResult.broken === 0
+                  ? `✅ Todos os ${linkCheckResult.checked} links estão funcionando.`
+                  : `❌ ${linkCheckResult.broken} link(s) quebrado(s) de ${linkCheckResult.checked} verificados.`}
+              </div>
+              {linkCheckResult.allResults?.length > 0 && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {linkCheckResult.allResults.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-3 px-4 py-2.5 ${item.ok ? '' : 'bg-red-50 dark:bg-red-900/10'}`}
+                      >
+                        <span>{item.ok ? '✅' : '❌'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{item.title}</p>
+                          <p className={`text-xs ${s.textMuted} truncate`}>
+                            {item.campaign}{item.campaign && ' · '}{item.marketplace}{item.position && ` · ${item.position}`}
+                          </p>
+                        </div>
+                        <span className={`text-xs font-mono shrink-0 ${item.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          HTTP {item.status || 'erro'}
+                        </span>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>
