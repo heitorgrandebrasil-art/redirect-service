@@ -11,13 +11,15 @@ const DEVICE_SQL = `
 `;
 
 export async function getOverview() {
-  const [byDevice, byPlatform, topCampaigns, totals] = await Promise.all([
+  const [byDevice, byPlatform, topCampaigns, totals, byDay, linkStatus] = await Promise.all([
     getClicksByDevice(),
     getClicksByPlatform(),
     getTopCampaigns(),
-    getTotals()
+    getTotals(),
+    getClicksByDay(),
+    getLinkStatusDistribution(),
   ]);
-  return { byDevice, byPlatform, topCampaigns, totals };
+  return { byDevice, byPlatform, topCampaigns, totals, byDay, linkStatus };
 }
 
 async function getClicksByDevice() {
@@ -59,7 +61,7 @@ async function getTopCampaigns() {
     LEFT JOIN redirect_clicks rc ON rc.redirect_id = r.id
     GROUP BY v.id, v.title, v.platform
     ORDER BY clicks DESC
-    LIMIT 10
+    LIMIT 5
   `);
   return result.rows;
 }
@@ -70,7 +72,46 @@ async function getTotals() {
       (SELECT COUNT(*)::int FROM redirect_clicks) AS total_clicks,
       (SELECT COUNT(*)::int FROM videos) AS total_campaigns,
       (SELECT COUNT(*)::int FROM profiles) AS total_profiles,
-      (SELECT COUNT(*)::int FROM products WHERE affiliate_url IS NOT NULL) AS total_links
+      (SELECT COUNT(*)::int FROM products WHERE affiliate_url IS NOT NULL AND affiliate_url != '') AS total_links,
+      (SELECT COUNT(*)::int FROM products WHERE affiliate_url IS NOT NULL AND affiliate_url != '' AND link_status = 'ok') AS links_ok,
+      (SELECT COUNT(*)::int FROM products WHERE link_status = 'broken') AS links_broken
   `);
   return result.rows[0];
+}
+
+async function getClicksByDay() {
+  const result = await query(`
+    SELECT
+      gs.day::date::text AS date,
+      COALESCE(cnt.clicks, 0)::int AS clicks
+    FROM generate_series(
+      (CURRENT_DATE - INTERVAL '29 days')::date,
+      CURRENT_DATE::date,
+      '1 day'::interval
+    ) AS gs(day)
+    LEFT JOIN (
+      SELECT DATE(created_at) AS day, COUNT(*)::int AS clicks
+      FROM redirect_clicks
+      WHERE created_at >= CURRENT_DATE - INTERVAL '29 days'
+      GROUP BY DATE(created_at)
+    ) cnt ON cnt.day = gs.day::date
+    ORDER BY gs.day
+  `);
+  return result.rows;
+}
+
+async function getLinkStatusDistribution() {
+  const result = await query(`
+    SELECT
+      CASE
+        WHEN snoozed_until IS NOT NULL AND snoozed_until > now() THEN 'snoozed'
+        ELSE COALESCE(NULLIF(link_status, ''), 'unknown')
+      END AS status,
+      COUNT(*)::int AS count
+    FROM products
+    WHERE affiliate_url IS NOT NULL AND affiliate_url != ''
+    GROUP BY status
+    ORDER BY count DESC
+  `);
+  return result.rows;
 }

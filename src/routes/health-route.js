@@ -2,6 +2,7 @@ import { query } from '../db.js';
 import config from '../config.js';
 import { authenticateJWT, requireRole } from '../middleware/authenticate.js';
 import { checkAllLinks } from '../services/link-health.js';
+import { sendTelegramMessage } from '../services/telegram-service.js';
 import logger from '../logger.js';
 
 export default async function healthRoutes(fastify) {
@@ -47,6 +48,30 @@ export default async function healthRoutes(fastify) {
       [id]
     );
     logger.info({ event: 'product.marked_fixed', productId: id, via: 'admin_panel' });
+
+    // Notify via Telegram if profile has bot configured
+    try {
+      const pResult = await query(`
+        SELECT p.title, v.title AS campaign_title,
+               pr.telegram_bot_token, pr.telegram_chat_id
+        FROM products p
+        LEFT JOIN videos v ON v.id = p.video_id
+        LEFT JOIN profiles pr ON pr.id = v.profile_id
+        WHERE p.id = $1
+      `, [id]);
+      if (pResult.rowCount > 0) {
+        const { telegram_bot_token, telegram_chat_id, title, campaign_title } = pResult.rows[0];
+        if (telegram_bot_token && telegram_chat_id) {
+          await sendTelegramMessage(
+            telegram_bot_token, telegram_chat_id,
+            `✅ <b>Link corrigido pelo painel!</b>\n\n🛒 <b>Produto:</b> ${title}\n📹 <b>Campanha:</b> ${campaign_title ?? '—'}`
+          );
+        }
+      }
+    } catch (e) {
+      logger.warn({ event: 'telegram.notify_fixed.failed', productId: id, error: e.message });
+    }
+
     return reply.send({ status: 'ok' });
   });
 

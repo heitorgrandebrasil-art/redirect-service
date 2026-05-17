@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getVideo, listVideoProducts, createVideoProduct, deleteProduct, replaceProductLink,
-  listDomains, getConfig, checkVideoLinks, type ProductPayload
+  markProductFixed, listDomains, getConfig, checkVideoLinks, type ProductPayload
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -38,6 +38,9 @@ export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const videoId = Number(id);
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const fixProductId = Number(searchParams.get('fix')) || null;
 
   const video    = useQuery({ queryKey: ['video', videoId],         queryFn: () => getVideo(videoId) });
   const products = useQuery({ queryKey: ['video-products', videoId], queryFn: () => listVideoProducts(videoId) });
@@ -53,10 +56,29 @@ export default function CampaignDetail() {
   const [newUrl, setNewUrl]           = useState('');
   const [replaceError, setReplaceError] = useState('');
 
+  const [justFixedId, setJustFixedId] = useState<number | null>(null);
+
   const [checkResult, setCheckResult] = useState<null | {
     checked: number; broken: number;
     results: { id: number; title: string; position: string; marketplace: string; url: string; ok: boolean; status: number }[];
   }>(null);
+
+  // Scroll to highlighted product when fix flow is active
+  useEffect(() => {
+    if (!fixProductId || products.isLoading) return;
+    const el = document.getElementById(`product-${fixProductId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [fixProductId, products.isLoading]);
+
+  const confirmFix = useMutation({
+    mutationFn: (pid: number) => markProductFixed(pid),
+    onSuccess: (_, pid) => {
+      setJustFixedId(pid);
+      qc.invalidateQueries({ queryKey: ['video-products', videoId] });
+      qc.invalidateQueries({ queryKey: ['broken-links'] });
+      setTimeout(() => navigate('/admin/broken-links'), 1500);
+    },
+  });
 
   const addProduct = useMutation({
     mutationFn: () => createVideoProduct(videoId, { ...form, position: '' }),
@@ -146,6 +168,21 @@ export default function CampaignDetail() {
             </button>
           </div>
 
+          {/* Fix mode banner */}
+          {fixProductId && !justFixedId && (
+            <div className={`${s.alertWarn} mb-6 flex items-center justify-between`}>
+              <span>
+                🔗 <strong>Modo correção:</strong> encontre o produto abaixo, troque o link afiliado e depois clique em <strong>Confirmar correção</strong>.
+              </span>
+              <button onClick={() => navigate(`/admin/campaigns/${videoId}`, { replace: true })} className="ml-4 text-xs opacity-60 hover:opacity-100 shrink-0">✕</button>
+            </div>
+          )}
+          {justFixedId && (
+            <div className={`${s.alertSuccess} mb-6`}>
+              ✅ Link marcado como corrigido! Redirecionando para links quebrados...
+            </div>
+          )}
+
           {/* Check result panel */}
           {checkResult && (
             <div className={`${checkResult.broken > 0 ? s.alertError : s.alertSuccess} mb-6`}>
@@ -200,8 +237,13 @@ export default function CampaignDetail() {
                       {items.map((p: any) => {
                         const shortUrl = fullShortUrl(p);
                         const checkRes = checkResult?.results.find((r) => r.id === p.id);
+                        const isFixTarget = fixProductId === p.id;
                         return (
-                          <div key={p.id} className={`${s.card} p-4`}>
+                          <div
+                            id={`product-${p.id}`}
+                            key={p.id}
+                            className={`${s.card} p-4 transition-all ${isFixTarget ? 'ring-2 ring-red-400 dark:ring-red-500' : ''}`}
+                          >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -259,6 +301,20 @@ export default function CampaignDetail() {
                                   >Salvar</button>
                                   <button onClick={() => setReplacingId(null)} className={s.btnSecondary}>Cancelar</button>
                                 </div>
+                              </div>
+                            )}
+                            {isFixTarget && !justFixedId && (
+                              <div className="mt-3 pt-3 border-t border-red-100 dark:border-red-800/40">
+                                <p className={`text-xs text-red-600 dark:text-red-400 mb-2`}>
+                                  Este é o link quebrado. Troque o link acima se necessário, depois confirme a correção.
+                                </p>
+                                <button
+                                  onClick={() => confirmFix.mutate(p.id)}
+                                  disabled={confirmFix.isPending}
+                                  className="bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                                >
+                                  {confirmFix.isPending ? 'Salvando...' : '✅ Confirmar correção'}
+                                </button>
                               </div>
                             )}
                           </div>

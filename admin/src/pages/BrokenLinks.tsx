@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getBrokenLinks, markProductFixed, snoozeProduct, BrokenLinkItem } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { getBrokenLinks, snoozeProduct, BrokenLinkItem } from '../lib/api';
 import { s } from '../lib/styles';
 
 const MARKETPLACE_LABELS: Record<string, string> = {
@@ -34,9 +35,9 @@ function RelativeTime({ iso }: { iso: string | null }) {
   return <span title={date.toLocaleString('pt-BR')}>{label}</span>;
 }
 
-function LinkCard({ item, onFixed, onSnoozed }: {
+function LinkCard({ item, onFix, onSnoozed }: {
   item: BrokenLinkItem;
-  onFixed: () => void;
+  onFix: () => void;
   onSnoozed: () => void;
 }) {
   const isSnoozed = item.snoozed_until && new Date(item.snoozed_until) > new Date();
@@ -88,8 +89,8 @@ function LinkCard({ item, onFixed, onSnoozed }: {
 
       {/* Actions */}
       <div className="flex gap-2 pt-1">
-        <button onClick={onFixed} className={`${s.btnPrimary} text-xs py-1.5 px-3`}>
-          ✅ Já corrigi
+        <button onClick={onFix} className={`${s.btnPrimary} text-xs py-1.5 px-3`}>
+          🔗 Corrigir agora
         </button>
         <button onClick={onSnoozed} className={`${s.btnSecondary} text-xs py-1.5 px-3`}>
           🔕 Ignorar 24h
@@ -101,6 +102,7 @@ function LinkCard({ item, onFixed, onSnoozed }: {
 
 export default function BrokenLinks() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data = [], isLoading } = useQuery({
     queryKey: ['broken-links'],
     queryFn: getBrokenLinks,
@@ -109,10 +111,6 @@ export default function BrokenLinks() {
 
   const [profileFilter, setProfileFilter] = useState('');
 
-  const fixMutation = useMutation({
-    mutationFn: markProductFixed,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['broken-links'] }),
-  });
   const snoozeMutation = useMutation({
     mutationFn: snoozeProduct,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['broken-links'] }),
@@ -179,7 +177,7 @@ export default function BrokenLinks() {
               <LinkCard
                 key={item.id}
                 item={item}
-                onFixed={() => fixMutation.mutate(item.id)}
+                onFix={() => navigate(`/admin/campaigns/${item.video_id}?fix=${item.id}`)}
                 onSnoozed={() => snoozeMutation.mutate(item.id)}
               />
             ))}

@@ -98,7 +98,17 @@ export const deleteDomain = (id: number) =>
 
 // Analytics
 export const getAnalyticsOverview = () =>
-  api.get('/analytics/overview').then((r) => r.data.data);
+  api.get('/analytics/overview').then((r) => r.data.data as {
+    byDevice: { device: string; clicks: number }[];
+    byPlatform: { platform: string; clicks: number }[];
+    topCampaigns: { id: number; title: string; platform: string; clicks: number }[];
+    totals: {
+      total_clicks: number; total_campaigns: number; total_profiles: number;
+      total_links: number; links_ok: number; links_broken: number;
+    };
+    byDay: { date: string; clicks: number }[];
+    linkStatus: { status: string; count: number }[];
+  });
 
 // Broken links
 export interface BrokenLinkItem {
