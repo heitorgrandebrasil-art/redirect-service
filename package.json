@@ -1,0 +1,21 @@
+{
+  "name": "redirect-service",
+  "version": "0.1.0",
+  "description": "Affiliate redirect and content management API service",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "NODE_ENV=development node src/index.js",
+    "validate:prod-env": "node scripts/validate-production-env.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "fastify": "^4.27.0",
+    "@fastify/cors": "^9.0.0",
+    "@fastify/helmet": "^11.0.0",
+    "pg": "^8.11.0",
+    "pino": "^8.15.0",
+    "uuid": "^9.0.0"
+  }
+}

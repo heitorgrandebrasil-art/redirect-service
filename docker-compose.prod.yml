@@ -1,0 +1,122 @@
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: ${PGDATABASE}
+      POSTGRES_USER: ${PGUSER}
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER} -d ${PGDATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: redirect-service-api:prod
+    env_file:
+      - ${APP_ENV_FILE:-.env.production}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/v1/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+
+  wp_db:
+    image: mariadb:10.6
+    environment:
+      MYSQL_DATABASE: ${WP_DB_NAME}
+      MYSQL_USER: ${WP_DB_USER}
+      MYSQL_PASSWORD: ${WP_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${WP_DB_ROOT_PASSWORD}
+    volumes:
+      - wp_db_data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u${WP_DB_USER} -p${WP_DB_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  wordpress:
+    image: wordpress:6.4
+    env_file:
+      - ${APP_ENV_FILE:-.env.production}
+    environment:
+      WORDPRESS_DB_HOST: wp_db:3306
+      WORDPRESS_DB_USER: ${WP_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD}
+      WORDPRESS_DB_NAME: ${WP_DB_NAME}
+      RDI_API_URL: ${RDI_API_URL}
+      RDI_PUBLIC_BASE_URL: ${RDI_PUBLIC_BASE_URL}
+      RDI_INTERNAL_SERVICE_KEY: ${RDI_INTERNAL_SERVICE_KEY}
+    volumes:
+      - wp_data:/var/www/html
+      - ./wordpress/redirect-service-integration:/var/www/html/wp-content/plugins/redirect-service-integration:ro
+    depends_on:
+      wp_db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@fsockopen('127.0.0.1', 80) ? 0 : 1);\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:stable
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./deploy/nginx/ssl:/etc/letsencrypt
+      - ./deploy/nginx/certbot:/var/www/certbot
+    depends_on:
+      api:
+        condition: service_healthy
+      wordpress:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+      - web
+
+volumes:
+  db_data:
+  wp_db_data:
+  wp_data:
+
+networks:
+  internal:
+    driver: bridge
+  web:
+    driver: bridge

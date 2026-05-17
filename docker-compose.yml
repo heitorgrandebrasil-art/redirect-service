@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: redirect_service
+      POSTGRES_USER: rs_user
+      POSTGRES_PASSWORD: rs_password
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    image: node:18
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+    environment:
+      - NODE_ENV=development
+    env_file:
+      - ./.env
+    depends_on:
+      - db
+    ports:
+      - "4000:4000"
+
+  wp_db:
+    image: mariadb:10.6
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wp
+      MYSQL_PASSWORD: wp
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - wp_db_data:/var/lib/mysql
+
+  wordpress:
+    image: wordpress:6.4
+    depends_on:
+      - wp_db
+    ports:
+      - "8000:80"
+    environment:
+      WORDPRESS_DB_HOST: wp_db:3306
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wp
+      WORDPRESS_DB_NAME: wordpress
+      RDI_INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      RDI_API_URL: ${API_URL}
+      RDI_PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+    env_file:
+      - ./.env
+    volumes:
+      - ./wordpress/redirect-service-integration:/var/www/html/wp-content/plugins/redirect-service-integration:ro
+
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  db_data:
+  wp_db_data:
