@@ -54,4 +54,11 @@ export async function runMigrations() {
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+
+  // Link health tracking columns
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS link_status TEXT NOT NULL DEFAULT 'unknown'`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS link_broken_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS link_last_status_code INTEGER`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS awaiting_confirmation BOOLEAN NOT NULL DEFAULT false`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS snoozed_until TIMESTAMPTZ`);
 }

@@ -1,16 +1,11 @@
 import { query } from '../db.js';
 import logger from '../logger.js';
 import config from '../config.js';
-import { sendTelegramMessage, buildBrokenLinkMessage } from './telegram-service.js';
-
-// In-memory dedup: don't re-notify the same broken product more than once per 4h
-const NOTIFY_COOLDOWN_MS = 4 * 60 * 60 * 1000;
-const _notifiedAt = new Map();
-function _shouldNotify(productId) {
-  const last = _notifiedAt.get(productId);
-  return !last || Date.now() - last > NOTIFY_COOLDOWN_MS;
-}
-function _markNotified(productId) { _notifiedAt.set(productId, Date.now()); }
+import {
+  sendTelegramMessage,
+  buildBrokenLinkMessage,
+  buildInlineKeyboard,
+} from './telegram-service.js';
 
 async function checkUrl(url) {
   try {
@@ -47,6 +42,9 @@ export async function checkAllLinks() {
       p.short_path,
       p.marketplace,
       p.position,
+      p.link_status,
+      p.awaiting_confirmation,
+      p.snoozed_until,
       p.domain_id,
       d.hostname     AS domain_hostname,
       v.title        AS campaign_title,
@@ -81,18 +79,30 @@ export async function checkAllLinks() {
     });
 
     if (!check.ok) {
-      logger.info({ event: 'link.broken', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
       brokenItems.push({ id: p.id, url: p.affiliate_url, status: check.status });
 
-      const hasCredentials = !!(p.telegram_bot_token && p.telegram_chat_id);
-      logger.info({ event: 'link.broken.notify_check', productId: p.id, hasCredentials, cooldownActive: hasCredentials && !_shouldNotify(p.id) });
+      const wasAlreadyBroken = p.link_status === 'broken';
+      if (!wasAlreadyBroken) {
+        await query(
+          `UPDATE products SET link_status = 'broken', link_broken_at = now(), link_last_status_code = $2 WHERE id = $1`,
+          [p.id, check.status || null]
+        );
+        logger.info({ event: 'link.broken.first', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
+      } else {
+        // Update status code on each check so it stays fresh
+        await query(`UPDATE products SET link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
+        logger.info({ event: 'link.broken', productId: p.id, url: p.affiliate_url, httpStatus: check.status });
+      }
 
-      if (hasCredentials && _shouldNotify(p.id)) {
+      const isSnoozed = p.snoozed_until && new Date(p.snoozed_until) > new Date();
+      const hasCredentials = !!(p.telegram_bot_token && p.telegram_chat_id);
+      logger.info({ event: 'link.broken.notify_check', productId: p.id, hasCredentials, awaitingConfirmation: p.awaiting_confirmation, isSnoozed: !!isSnoozed });
+
+      if (hasCredentials && !p.awaiting_confirmation && !isSnoozed) {
         const base = p.domain_hostname
           ? `https://${p.domain_hostname}`
           : config.app.publicBaseUrl;
         const shortUrl = `${base}/r/${p.short_path}`;
-
         const msg = buildBrokenLinkMessage({
           campaignTitle: p.campaign_title ?? p.product_title,
           platform: p.platform,
@@ -100,9 +110,20 @@ export async function checkAllLinks() {
           profileName: p.profile_name,
           shortUrl,
         });
-
-        const sent = await sendTelegramMessage(p.telegram_bot_token, p.telegram_chat_id, msg);
-        if (sent) _markNotified(p.id);
+        const keyboard = buildInlineKeyboard(p.id);
+        const sent = await sendTelegramMessage(p.telegram_bot_token, p.telegram_chat_id, msg, keyboard);
+        if (sent) {
+          await query(`UPDATE products SET awaiting_confirmation = true WHERE id = $1`, [p.id]);
+        }
+      }
+    } else {
+      // Link recovered — clear broken state
+      if (p.link_status !== 'ok' && p.link_status !== 'unknown') {
+        await query(
+          `UPDATE products SET link_status = 'ok', awaiting_confirmation = false, snoozed_until = null WHERE id = $1`,
+          [p.id]
+        );
+        logger.info({ event: 'link.recovered', productId: p.id });
       }
     }
   }
@@ -119,6 +140,7 @@ export async function checkLinksForVideo(videoId) {
       p.short_path,
       p.marketplace,
       p.position,
+      p.link_status,
       p.domain_id,
       d.hostname     AS domain_hostname,
       v.title        AS campaign_title,
@@ -140,19 +162,20 @@ export async function checkLinksForVideo(videoId) {
 
   for (const p of products) {
     const check = await checkUrl(p.affiliate_url);
-    if (!check.ok && p.telegram_bot_token && p.telegram_chat_id) {
-      const base = p.domain_hostname
-        ? `https://${p.domain_hostname}`
-        : config.app.publicBaseUrl;
-      const msg = buildBrokenLinkMessage({
-        campaignTitle: p.campaign_title ?? p.product_title,
-        platform: p.platform,
-        marketplace: p.marketplace,
-        profileName: p.profile_name,
-        shortUrl: `${base}/r/${p.short_path}`,
-      });
-      await sendTelegramMessage(p.telegram_bot_token, p.telegram_chat_id, msg);
+
+    // Update DB status silently (no Telegram for manual per-video checks)
+    if (!check.ok && p.link_status !== 'broken') {
+      await query(
+        `UPDATE products SET link_status = 'broken', link_broken_at = now(), link_last_status_code = $2 WHERE id = $1`,
+        [p.id, check.status || null]
+      );
+    } else if (check.ok && p.link_status === 'broken') {
+      await query(
+        `UPDATE products SET link_status = 'ok', awaiting_confirmation = false, snoozed_until = null WHERE id = $1`,
+        [p.id]
+      );
     }
+
     results.push({
       id: p.id,
       title: p.product_title,

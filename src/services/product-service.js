@@ -174,7 +174,9 @@ export async function replaceAffiliateUrl(productId, newUrl) {
     }
 
     const updated = await client.query(
-      `UPDATE products SET affiliate_url = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE products
+       SET affiliate_url = $1, link_status = 'unknown', awaiting_confirmation = false, snoozed_until = null, updated_at = now()
+       WHERE id = $2 RETURNING *`,
       [newUrl, productId]
     );
 

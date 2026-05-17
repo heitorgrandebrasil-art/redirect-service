@@ -100,6 +100,33 @@ export const deleteDomain = (id: number) =>
 export const getAnalyticsOverview = () =>
   api.get('/analytics/overview').then((r) => r.data.data);
 
+// Broken links
+export interface BrokenLinkItem {
+  id: number;
+  title: string;
+  affiliate_url: string;
+  short_path: string;
+  marketplace: string;
+  position: string;
+  link_status: string;
+  link_broken_at: string | null;
+  link_last_status_code: number | null;
+  awaiting_confirmation: boolean;
+  snoozed_until: string | null;
+  video_id: number;
+  video_title: string;
+  platform: string;
+  profile_id: number | null;
+  profile_name: string | null;
+  domain_hostname: string | null;
+}
+export const getBrokenLinks = () =>
+  api.get('/broken-links').then((r) => r.data.data as BrokenLinkItem[]);
+export const markProductFixed = (id: number) =>
+  api.post(`/products/${id}/mark-fixed`).then((r) => r.data);
+export const snoozeProduct = (id: number) =>
+  api.post(`/products/${id}/snooze`).then((r) => r.data);
+
 // Admin tools
 export interface LinkCheckItem {
   id: number; title: string; campaign: string;

@@ -61,7 +61,10 @@ const config = {
     max: Number(env.PGPOOL_MAX || 10),
     idleTimeoutMillis: Number(env.PG_IDLE_TIMEOUT || 30000)
   },
-  appName: env.APP_NAME || 'Redirect Admin'
+  appName: env.APP_NAME || 'Redirect Admin',
+  telegram: {
+    webhookSecret: env.TELEGRAM_WEBHOOK_SECRET || '',
+  },
 };
 
 requireProductionValue('INTERNAL_SERVICE_KEY', config.auth.internalServiceKey, [
