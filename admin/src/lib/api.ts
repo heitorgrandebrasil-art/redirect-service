@@ -157,13 +157,18 @@ export const checkVideoLinks = (id: number) =>
     results: { id: number; title: string; position: string; marketplace: string; url: string; ok: boolean; status: number }[];
   });
 
+export const checkProductLink = (id: number) =>
+  api.post(`/admin/links/${id}/check`).then((r) => r.data.data as {
+    ok: boolean; humanReview: boolean; httpStatus: number; linkStatus: string;
+  });
+
 // Settings (admin)
 export const getSettings = () =>
   api.get('/settings').then((r) => r.data.data as {
-    monitor: { enabled: boolean; frequency_hours: number; preferred_hour: number; last_run: string | null };
+    monitor: { enabled: boolean; frequency_hours: number; last_run: string | null };
     openai_key_set: boolean;
   });
-export const updateLinkMonitor = (data: { enabled?: boolean; frequency_hours?: number; preferred_hour?: number }) =>
+export const updateLinkMonitor = (data: { enabled?: boolean; frequency_hours?: number }) =>
   api.patch('/settings/monitor', data).then((r) => r.data.data);
 export const updateOpenAIKey = (api_key: string) =>
   api.put('/settings/openai-key', { api_key }).then((r) => r.data);

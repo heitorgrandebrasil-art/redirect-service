@@ -16,9 +16,8 @@ export default async function settingsRoutes(fastify) {
       body: {
         type: 'object',
         properties: {
-          enabled:        { type: 'boolean' },
-          frequency_hours:{ type: 'number', minimum: 0.001 },
-          preferred_hour: { type: 'integer', minimum: 0, maximum: 23 },
+          enabled:         { type: 'boolean' },
+          frequency_hours: { type: 'number', minimum: 0.001 },
         },
         additionalProperties: false,
       }

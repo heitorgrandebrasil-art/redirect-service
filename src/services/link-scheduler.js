@@ -2,7 +2,7 @@ import { getSettingJson, setSettingJson } from './settings-service.js';
 import { checkAllLinks } from './link-health.js';
 import logger from '../logger.js';
 
-const DEFAULTS = { enabled: false, frequency_hours: 24, preferred_hour: 8, last_run: null };
+const DEFAULTS = { enabled: false, frequency_hours: 24, last_run: null };
 
 class LinkScheduler {
   constructor() { this._timer = null; }
@@ -33,7 +33,7 @@ class LinkScheduler {
     }, delay);
   }
 
-  _nextDelay({ frequency_hours, preferred_hour, last_run }) {
+  _nextDelay({ frequency_hours, last_run }) {
     const freqMs = frequency_hours * 60 * 60 * 1000;
     const now = Date.now();
 
@@ -42,11 +42,8 @@ class LinkScheduler {
       if (next > now) return next - now;
     }
 
-    // Overdue or never ran — fire at next preferred_hour
-    const at = new Date();
-    at.setHours(preferred_hour, 0, 0, 0);
-    if (at.getTime() <= now) at.setDate(at.getDate() + 1);
-    return Math.min(at.getTime() - now, freqMs);
+    // First run or overdue — start soon
+    return 5_000;
   }
 
   stop() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } }

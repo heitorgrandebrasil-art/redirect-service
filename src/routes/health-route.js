@@ -1,7 +1,7 @@
 import { query } from '../db.js';
 import config from '../config.js';
 import { authenticateJWT, requireRole } from '../middleware/authenticate.js';
-import { checkAllLinks } from '../services/link-health.js';
+import { checkAllLinks, checkSingleProduct } from '../services/link-health.js';
 import { sendTelegramMessage } from '../services/telegram-service.js';
 import logger from '../logger.js';
 
@@ -13,6 +13,16 @@ export default async function healthRoutes(fastify) {
     preHandler: [authenticateJWT, requireRole('admin')]
   }, async (request, reply) => {
     const result = await checkAllLinks();
+    return reply.send({ status: 'ok', data: result });
+  });
+
+  // Check a single product link — any authenticated user
+  fastify.post('/admin/links/:id/check', {
+    preHandler: [authenticateJWT]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const result = await checkSingleProduct(Number(id));
+    if (!result) return reply.code(404).send({ status: 'error', message: 'Product not found or no URL' });
     return reply.send({ status: 'ok', data: result });
   });
 

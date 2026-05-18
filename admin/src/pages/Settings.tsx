@@ -79,7 +79,6 @@ export default function Settings() {
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings, enabled: user?.role === 'admin' });
   const [monitorEnabled, setMonitorEnabled] = useState(false);
   const [monitorFreq, setMonitorFreq]       = useState(24);
-  const [monitorHour, setMonitorHour]       = useState(8);
   const [monitorSaved, setMonitorSaved]     = useState(false);
   const [monitorError, setMonitorError]     = useState('');
 
@@ -89,11 +88,10 @@ export default function Settings() {
     const m = settingsQ.data.monitor;
     setMonitorEnabled(m.enabled);
     setMonitorFreq(m.frequency_hours);
-    setMonitorHour(m.preferred_hour);
   }, [settingsQ.data]);
 
   const saveMonitor = useMutation({
-    mutationFn: () => updateLinkMonitor({ enabled: monitorEnabled, frequency_hours: monitorFreq, preferred_hour: monitorHour }),
+    mutationFn: () => updateLinkMonitor({ enabled: monitorEnabled, frequency_hours: monitorFreq }),
     onSuccess: () => {
       setMonitorSaved(true);
       setMonitorError('');
@@ -172,26 +170,16 @@ export default function Settings() {
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${monitorEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={s.label}>Frequência</label>
-                <select value={monitorFreq} onChange={(e) => setMonitorFreq(Number(e.target.value))} className={s.select}>
-                  <option value={0.00833}>30 segundos (teste)</option>
-                  <option value={1}>A cada 1 hora</option>
-                  <option value={6}>A cada 6 horas</option>
-                  <option value={12}>A cada 12 horas</option>
-                  <option value={24}>A cada 24 horas</option>
-                  <option value={48}>A cada 48 horas</option>
-                </select>
-              </div>
-              <div>
-                <label className={s.label}>Horário preferido</label>
-                <select value={monitorHour} onChange={(e) => setMonitorHour(Number(e.target.value))} className={s.select}>
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label className={s.label}>Frequência</label>
+              <select value={monitorFreq} onChange={(e) => setMonitorFreq(Number(e.target.value))} className={s.select}>
+                <option value={0.00833}>30 segundos (teste)</option>
+                <option value={1}>A cada 1 hora</option>
+                <option value={6}>A cada 6 horas</option>
+                <option value={12}>A cada 12 horas</option>
+                <option value={24}>A cada 24 horas</option>
+                <option value={48}>A cada 48 horas</option>
+              </select>
             </div>
             {settingsQ.data?.monitor.last_run && (
               <p className={`text-xs ${s.textMuted}`}>

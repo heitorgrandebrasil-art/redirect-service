@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getVideo, listVideoProducts, createVideoProduct, deleteProduct, replaceProductLink,
   markProductFixed, toggleProductMonitoring, listDomains, getConfig, checkVideoLinks,
-  type ProductPayload
+  checkProductLink, type ProductPayload
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -116,6 +116,7 @@ export default function CampaignDetail() {
   const [replaceError, setReplaceError]   = useState('');
 
   const [justFixedId, setJustFixedId] = useState<number | null>(null);
+  const [checkingIds, setCheckingIds] = useState<Set<number>>(new Set());
 
   const [checkResult, setCheckResult] = useState<null | {
     checked: number; broken: number;
@@ -128,6 +129,16 @@ export default function CampaignDetail() {
     const el = document.getElementById(`product-${fixProductId}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [fixProductId, products.isLoading]);
+
+  async function checkSingleProduct(pid: number) {
+    setCheckingIds((prev) => new Set([...prev, pid]));
+    try {
+      await checkProductLink(pid);
+      qc.invalidateQueries({ queryKey: ['video-products', videoId] });
+    } finally {
+      setCheckingIds((prev) => { const n = new Set(prev); n.delete(pid); return n; });
+    }
+  }
 
   const confirmFix = useMutation({
     mutationFn: (pid: number) => markProductFixed(pid),
@@ -145,7 +156,11 @@ export default function CampaignDetail() {
       position: '',
       short_path: sanitizeUri(form.short_path ?? '').length >= 2 ? sanitizeUri(form.short_path ?? '') : undefined,
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['video-products', videoId] }); setShowAdd(false); },
+    onSuccess: (newProduct: any) => {
+      qc.invalidateQueries({ queryKey: ['video-products', videoId] });
+      setShowAdd(false);
+      if (newProduct?.id) setTimeout(() => checkSingleProduct(newProduct.id), 3000);
+    },
     onError: (e: any) => setAddError(e.response?.data?.message || 'Erro ao adicionar link'),
   });
 
@@ -156,7 +171,12 @@ export default function CampaignDetail() {
 
   const replaceLink = useMutation({
     mutationFn: ({ pid, url }: { pid: number; url: string }) => replaceProductLink(pid, url),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['video-products', videoId] }); setReplacingId(null); setNewUrl(''); },
+    onSuccess: (_, { pid }) => {
+      qc.invalidateQueries({ queryKey: ['video-products', videoId] });
+      setReplacingId(null);
+      setNewUrl('');
+      setTimeout(() => checkSingleProduct(pid), 3000);
+    },
     onError: (e: any) => setReplaceError(e.response?.data?.message || 'URL inválida'),
   });
 
@@ -364,6 +384,14 @@ export default function CampaignDetail() {
                                     }`}
                                   >
                                     {monitoring ? '🔔' : '🔕'} Monitor
+                                  </button>
+                                  <button
+                                    onClick={() => checkSingleProduct(p.id)}
+                                    disabled={checkingIds.has(p.id)}
+                                    title="Verificar este link agora"
+                                    className="text-xs px-1.5 py-0.5 rounded border transition-colors text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {checkingIds.has(p.id) ? '⏳ Verificando...' : '🔍 Verificar'}
                                   </button>
                                 </div>
                               </div>

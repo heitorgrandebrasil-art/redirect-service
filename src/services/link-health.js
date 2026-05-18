@@ -283,3 +283,47 @@ export async function checkLinksForVideo(videoId) {
 
   return { checked: products.length, broken: results.filter((r) => !r.ok).length, results };
 }
+
+export async function checkSingleProduct(productId) {
+  const result = await query(
+    `SELECT id, affiliate_url, link_status FROM products WHERE id = $1`,
+    [productId]
+  );
+  if (result.rowCount === 0 || !result.rows[0].affiliate_url) return null;
+  const p = result.rows[0];
+
+  const check = await checkUrl(p.affiliate_url);
+  await query(`UPDATE products SET link_last_checked_at = now() WHERE id = $1`, [p.id]);
+
+  if (check.humanReview) {
+    if (p.link_status !== 'human_review') {
+      await query(
+        `UPDATE products SET link_status = 'human_review', link_last_status_code = $2 WHERE id = $1`,
+        [p.id, check.status || null]
+      );
+    }
+  } else if (!check.ok) {
+    if (p.link_status !== 'broken') {
+      await query(
+        `UPDATE products SET link_status = 'broken', link_broken_at = now(), link_last_status_code = $2 WHERE id = $1`,
+        [p.id, check.status || null]
+      );
+    } else {
+      await query(`UPDATE products SET link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
+    }
+  } else {
+    if (p.link_status === 'broken' || p.link_status === 'human_review') {
+      await query(
+        `UPDATE products SET link_status = 'ok', awaiting_confirmation = false, snoozed_until = null WHERE id = $1`,
+        [p.id]
+      );
+    } else if (p.link_status !== 'ok') {
+      await query(`UPDATE products SET link_status = 'ok' WHERE id = $1`, [p.id]);
+    }
+  }
+
+  logger.info({ event: 'link.check.single', productId: p.id, ok: check.ok, httpStatus: check.status });
+
+  const linkStatus = check.humanReview ? 'human_review' : check.ok ? 'ok' : 'broken';
+  return { ok: check.ok && !check.humanReview, humanReview: check.humanReview ?? false, httpStatus: check.status, linkStatus };
+}
