@@ -9,13 +9,92 @@ import {
 
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const BOT_UA = 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)';
-const ML_HOSTS = ['mercadolivre.com.br', 'mercadolivre.com', 'ml.com'];
+const ML_HOSTS     = ['mercadolivre.com.br', 'mercadolivre.com', 'ml.com'];
+const AMAZON_HOSTS = ['amazon.com.br', 'amazon.com', 'amzn.to'];
 
 function isMercadoLivreUrl(url) {
   try {
     const { hostname } = new URL(url);
     return ML_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
   } catch { return false; }
+}
+
+function isAmazonUrl(url) {
+  try {
+    const { hostname } = new URL(url);
+    return AMAZON_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
+  } catch { return false; }
+}
+
+async function checkAmazonUrl(url) {
+  const headers = {
+    'User-Agent': BROWSER_UA,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+  };
+
+  async function doFetch() {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal, headers });
+      clearTimeout(tid);
+      return res;
+    } catch (err) {
+      clearTimeout(tid);
+      throw err;
+    }
+  }
+
+  try {
+    let res = await doFetch();
+
+    // Retry once on 503 — Amazon sometimes blocks on first hit
+    if (res.status === 503) {
+      await new Promise((r) => setTimeout(r, 2000));
+      res = await doFetch();
+    }
+
+    if (res.status === 404 || res.status === 410) {
+      return { ok: false, status: res.status };
+    }
+
+    // Still blocked after retry — can't confirm, send to human review
+    if (res.status === 503 || res.status >= 500) {
+      return { ok: false, status: res.status, humanReview: true };
+    }
+
+    const html = await res.text();
+
+    // Page not found (404 page or Muffin dog page)
+    if (html.includes('dogs-of-amazon') || html.includes('não conseguimos encontrar')) {
+      return { ok: false, status: res.status };
+    }
+
+    // Product unavailable (out of stock / discontinued)
+    if (
+      html.includes('Não temos previsão') ||
+      html.includes('Currently unavailable') ||
+      html.includes('Atualmente não disponível')
+    ) {
+      return { ok: false, status: res.status };
+    }
+
+    // Product is available
+    if (
+      html.includes('add-to-cart-button') ||
+      html.includes('Adicionar ao carrinho') ||
+      html.includes('buybox')
+    ) {
+      return { ok: true, status: res.status };
+    }
+
+    // Could not confirm either way
+    return { ok: false, status: res.status, humanReview: true };
+  } catch (err) {
+    return { ok: false, status: 0, error: err.message };
+  }
 }
 
 async function checkMercadoLivreUrl(url) {
@@ -71,6 +150,9 @@ async function checkMercadoLivreUrl(url) {
 async function checkUrl(url) {
   if (isMercadoLivreUrl(url)) {
     return checkMercadoLivreUrl(url);
+  }
+  if (isAmazonUrl(url)) {
+    return checkAmazonUrl(url);
   }
   try {
     const controller = new AbortController();
@@ -134,7 +216,7 @@ export async function checkAllLinks() {
     const check = await checkUrl(p.affiliate_url);
 
     // Always record when the product was last checked
-    await query(`UPDATE products SET link_last_checked_at = now() WHERE id = $1`, [p.id]);
+    await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
 
     allResults.push({
       id: p.id,
@@ -245,7 +327,7 @@ export async function checkLinksForVideo(videoId) {
   for (const p of products) {
     const check = await checkUrl(p.affiliate_url);
 
-    await query(`UPDATE products SET link_last_checked_at = now() WHERE id = $1`, [p.id]);
+    await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
 
     // Update DB status (no Telegram for manual per-video checks)
     if (check.humanReview) {
@@ -293,7 +375,7 @@ export async function checkSingleProduct(productId) {
   const p = result.rows[0];
 
   const check = await checkUrl(p.affiliate_url);
-  await query(`UPDATE products SET link_last_checked_at = now() WHERE id = $1`, [p.id]);
+  await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
 
   if (check.humanReview) {
     if (p.link_status !== 'human_review') {
