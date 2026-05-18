@@ -3,14 +3,12 @@ import { NotFoundError, ConflictError } from '../errors.js';
 import { logAudit } from '../audit.js';
 import { createRedirect, invalidateRedirectCache } from './redirect-service.js';
 
-const MARKETPLACE_POSITIONS = {
-  mercadolivre: ['ml-1', 'ml-2', 'ml-3', 'ml-4', 'ml-5'],
-  amazon:       ['amz-1', 'amz-2', 'amz-3', 'amz-4', 'amz-5'],
-  shopee:       ['shp-1', 'shp-2', 'shp-3', 'shp-4', 'shp-5'],
-  outros:       ['out-1', 'out-2', 'out-3', 'out-4', 'out-5'],
+const MARKETPLACE_PREFIX = {
+  mercadolivre: 'ml',
+  amazon:       'amz',
+  shopee:       'shp',
+  outros:       'out',
 };
-const LEGACY_POSITIONS = ['top1', 'top2', 'top3', 'top4', 'top5'];
-const ALL_POSITIONS = [...LEGACY_POSITIONS, ...Object.values(MARKETPLACE_POSITIONS).flat()];
 
 function slugify(value) {
   return String(value || '')
@@ -51,15 +49,16 @@ async function uniqueShortPath(seed) {
 }
 
 function normalizePosition(position) {
-  return position && ALL_POSITIONS.includes(position) ? position : null;
+  return position || null;
 }
 
 export async function nextPositionForMarketplace(videoId, marketplace) {
-  const key = (marketplace || 'outros').toLowerCase();
-  const slots = MARKETPLACE_POSITIONS[key] ?? MARKETPLACE_POSITIONS.outros;
+  const prefix = MARKETPLACE_PREFIX[(marketplace || 'outros').toLowerCase()] ?? 'out';
   const existing = await query('SELECT position FROM products WHERE video_id = $1', [videoId]);
   const used = new Set(existing.rows.map((r) => r.position));
-  return slots.find((p) => !used.has(p)) ?? null;
+  let i = 1;
+  while (used.has(`${prefix}-${i}`)) i++;
+  return `${prefix}-${i}`;
 }
 
 export async function listProducts() {

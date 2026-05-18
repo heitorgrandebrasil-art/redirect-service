@@ -31,7 +31,7 @@ export default async function productRoutes(fastify) {
         type: 'object',
         required: ['affiliate_url'],
         properties: {
-          affiliate_url: { type: 'string', format: 'uri' }
+          affiliate_url: { type: 'string', minLength: 10 }
         },
         additionalProperties: false
       }

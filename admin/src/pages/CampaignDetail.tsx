@@ -164,13 +164,15 @@ export default function CampaignDetail() {
     onError: (e: any) => setAddError(e.response?.data?.message || 'Erro ao adicionar link'),
   });
 
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const removeProduct = useMutation({
     mutationFn: (pid: number) => deleteProduct(pid),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['video-products', videoId] }),
+    onSuccess: () => { setRemoveError(null); qc.invalidateQueries({ queryKey: ['video-products', videoId] }); },
+    onError: (e: any) => setRemoveError(e.response?.data?.message || 'Erro ao remover link'),
   });
 
   const replaceLink = useMutation({
-    mutationFn: ({ pid, url }: { pid: number; url: string }) => replaceProductLink(pid, url),
+    mutationFn: ({ pid, url }: { pid: number; url: string }) => replaceProductLink(pid, url.trim()),
     onSuccess: (_, { pid }) => {
       qc.invalidateQueries({ queryKey: ['video-products', videoId] });
       setReplacingId(null);
@@ -293,22 +295,26 @@ export default function CampaignDetail() {
             </div>
           )}
 
+          {removeError && (
+            <div className={`${s.alertError} mb-4 flex items-center justify-between`}>
+              <span>{removeError}</span>
+              <button onClick={() => setRemoveError(null)} className="text-xs opacity-60 hover:opacity-100 ml-4">✕</button>
+            </div>
+          )}
+
           {/* Marketplace groups */}
           <div className="space-y-6">
             {MARKETPLACES.map((mkt) => {
               const items = productsFor(mkt.key);
-              const canAdd = items.length < 5;
               return (
                 <div key={mkt.key}>
                   <div className="flex items-center justify-between mb-3">
                     <h2 className={`font-semibold text-sm ${mkt.color}`}>
-                      {mkt.label} <span className={`${s.textMuted} font-normal`}>({items.length}/5)</span>
+                      {mkt.label} <span className={`${s.textMuted} font-normal`}>({items.length})</span>
                     </h2>
-                    {canAdd && (
-                      <button onClick={() => openAdd(mkt.key as MarketplaceKey)} className={s.btnPrimary}>
-                        + Adicionar
-                      </button>
-                    )}
+                    <button onClick={() => openAdd(mkt.key as MarketplaceKey)} className={s.btnPrimary}>
+                      + Adicionar
+                    </button>
                   </div>
 
                   {items.length === 0 ? (
@@ -545,12 +551,6 @@ export default function CampaignDetail() {
                     >
                       {MARKETPLACES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </select>
-                    {(() => {
-                      const count = productsFor(form.marketplace ?? 'mercadolivre').length;
-                      return count >= 5
-                        ? <p className="text-xs text-red-500 mt-1">Limite de 5 links atingido para este marketplace.</p>
-                        : <p className={s.hint}>{5 - count} slot(s) disponível(is)</p>;
-                    })()}
                   </div>
 
                   <div>
@@ -607,7 +607,7 @@ export default function CampaignDetail() {
                   <button onClick={() => setShowAdd(false)} className={s.btnSecondary}>Cancelar</button>
                   <button
                     onClick={() => addProduct.mutate()}
-                    disabled={addProduct.isPending || !form.title || !form.affiliate_url || productsFor(form.marketplace ?? '').length >= 5}
+                    disabled={addProduct.isPending || !form.title || !form.affiliate_url}
                     className={s.btnPrimary}
                   >
                     {addProduct.isPending ? 'Adicionando...' : 'Adicionar'}

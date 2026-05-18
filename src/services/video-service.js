@@ -2,7 +2,6 @@ import { query } from '../db.js';
 import { NotFoundError } from '../errors.js';
 import { logAudit } from '../audit.js';
 import { createProduct, nextPositionForMarketplace } from './product-service.js';
-import { ConflictError } from '../errors.js';
 
 const baseColumns = ['id', 'title', 'description', 'platform', 'original_video_url', 'notes', 'publish_date', 'profile_id', 'created_at', 'updated_at'];
 
@@ -136,9 +135,6 @@ export async function createProductForVideo(videoId, productPayload) {
   let position = productPayload.position;
   if (!position) {
     position = await nextPositionForMarketplace(videoId, marketplace);
-    if (!position) {
-      throw new ConflictError(`Limite de links para "${marketplace}" atingido (máximo 5)`);
-    }
   }
 
   const product = await createProduct({ ...productPayload, position, video_id: videoId, marketplace });
