@@ -6,7 +6,6 @@ import { createRedirect, invalidateRedirectCache } from './redirect-service.js';
 const MARKETPLACE_PREFIX = {
   mercadolivre: 'ml',
   amazon:       'amz',
-  shopee:       'shp',
   outros:       'out',
 };
 

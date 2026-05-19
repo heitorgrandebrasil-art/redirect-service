@@ -11,7 +11,6 @@ import { s } from '../lib/styles';
 const MARKETPLACES = [
   { key: 'mercadolivre', label: 'Mercado Livre',  prefix: 'ml',  color: 'text-yellow-600 dark:text-yellow-400',  bg: 'bg-yellow-50 dark:bg-yellow-900/20',  border: 'border-yellow-200 dark:border-yellow-800' },
   { key: 'amazon',       label: 'Amazon',          prefix: 'amz', color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20',  border: 'border-orange-200 dark:border-orange-800' },
-  { key: 'shopee',       label: 'Shopee',          prefix: 'shp', color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20',  border: 'border-orange-200 dark:border-orange-800' },
   { key: 'outros',       label: 'Outros',          prefix: 'out', color: 'text-gray-600 dark:text-gray-400',     bg: 'bg-gray-50 dark:bg-gray-700/30',       border: 'border-gray-200 dark:border-gray-700' },
 ] as const;
 

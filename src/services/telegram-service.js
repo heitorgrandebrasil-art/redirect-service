@@ -3,7 +3,6 @@ import logger from '../logger.js';
 const MARKETPLACE_LABELS = {
   mercadolivre: 'Mercado Livre',
   amazon: 'Amazon',
-  shopee: 'Shopee',
   outros: 'Outros',
   affiliate: 'Afiliado',
 };
