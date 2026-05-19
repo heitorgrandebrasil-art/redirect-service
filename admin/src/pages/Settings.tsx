@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import {
   setupTotp, enableTotp, disableTotp, regenerateBackupCodes, changePassword,
   checkLinks, getSettings, updateLinkMonitor,
-  saveGeminiKey, deleteGeminiKey, getVerificationHistory, LinkCheckItem,
+  saveGeminiKey, deleteGeminiKey, testCurrentGeminiKey, getVerificationHistory, LinkCheckItem,
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -130,6 +130,20 @@ export default function Settings() {
     },
   });
 
+  const testCurrentKey = useMutation({
+    mutationFn: testCurrentGeminiKey,
+    onMutate: () => setGeminiTestStatus('testing'),
+    onSuccess: (data) => {
+      if (data.test.ok) {
+        setGeminiTestStatus({ ok: true, message: 'Chave válida e funcionando!' });
+        settingsQ.refetch();
+      } else {
+        setGeminiTestStatus({ ok: false, message: geminiErrorMessage(data.test.error, data.test.code) });
+      }
+    },
+    onError: () => setGeminiTestStatus({ ok: false, message: 'Erro ao testar a chave.' }),
+  });
+
   function geminiErrorMessage(error?: string, code?: number | null): string {
     // Pure network failure — no HTTP status received (code is null/undefined)
     if (code == null && (error?.includes('ECONNREFUSED') || error?.includes('ENOTFOUND') || error?.includes('ETIMEDOUT') || error?.toLowerCase().includes('failed to fetch'))) {
@@ -244,79 +258,109 @@ export default function Settings() {
 
           {/* Gemini */}
           <div className="space-y-3">
-            <div>
-              <label className={s.label}>Gemini API Key</label>
-              {settingsQ.data?.gemini_key_set && (
-                <p className={`text-xs ${s.textMuted} mb-1`}>
-                  Chave configurada: ●●●●●●●●●●●●{settingsQ.data.gemini_key_last4}
+            {settingsQ.data?.gemini_key_set ? (
+              <>
+                <div className={`rounded-lg p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800`}>
+                  <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                    ✅ Chave configurada: ●●●●●●●●{settingsQ.data.gemini_key_last4}
+                  </p>
                   {settingsQ.data.gemini_key_updated_at && (
-                    <span className="ml-2">
-                      · atualizada em {new Date(settingsQ.data.gemini_key_updated_at).toLocaleDateString('pt-BR')}
-                    </span>
+                    <p className={`text-xs ${s.textMuted} mt-0.5`}>
+                      Última verificação bem-sucedida:{' '}
+                      {new Date(settingsQ.data.gemini_key_updated_at).toLocaleString('pt-BR', {
+                        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                      })}
+                    </p>
                   )}
-                </p>
-              )}
-              <input
-                type="password"
-                value={geminiKey}
-                onChange={(e) => { setGeminiKey(e.target.value); setGeminiTestStatus('idle'); }}
-                placeholder={settingsQ.data?.gemini_key_set ? 'Cole aqui para substituir a chave atual' : 'AIza...'}
-                className={s.inputMono}
-                autoComplete="off"
-              />
-              {!settingsQ.data?.gemini_key_set && (
-                <p className={s.hint}>
-                  Obtenha sua chave em <span className="font-mono">aistudio.google.com</span>. Salva de forma criptografada.
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={() => saveGemini.mutate()}
-                disabled={saveGemini.isPending || !geminiKey.trim()}
-                className={s.btnPrimary}
-              >
-                {saveGemini.isPending ? 'Testando...' : 'Salvar e Testar'}
-              </button>
-              {settingsQ.data?.gemini_key_set && !geminiDeleteConfirm && (
-                <button
-                  onClick={() => setGeminiDeleteConfirm(true)}
-                  className={s.btnDanger}
-                >
-                  Apagar chave
-                </button>
-              )}
-              {geminiDeleteConfirm && (
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs ${s.textSecondary}`}>Confirmar?</span>
-                  <button
-                    onClick={() => removeGemini.mutate()}
-                    disabled={removeGemini.isPending}
-                    className={`${s.btnDanger} text-xs py-1 px-2`}
-                  >
-                    Sim, apagar
-                  </button>
-                  <button
-                    onClick={() => setGeminiDeleteConfirm(false)}
-                    className={`${s.btnSecondary} text-xs py-1 px-2`}
-                  >
-                    Cancelar
-                  </button>
                 </div>
-              )}
-            </div>
+                <div>
+                  <label className={s.label}>Substituir chave (opcional)</label>
+                  <input
+                    type="password"
+                    value={geminiKey}
+                    onChange={(e) => { setGeminiKey(e.target.value); setGeminiTestStatus('idle'); }}
+                    placeholder="Deixe vazio para manter a chave atual"
+                    className={s.inputMono}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {geminiKey.trim() ? (
+                    <button
+                      onClick={() => saveGemini.mutate()}
+                      disabled={saveGemini.isPending}
+                      className={s.btnPrimary}
+                    >
+                      {saveGemini.isPending ? 'Testando...' : 'Salvar e Testar'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => testCurrentKey.mutate()}
+                      disabled={testCurrentKey.isPending || geminiTestStatus === 'testing'}
+                      className={s.btnSecondary}
+                    >
+                      {geminiTestStatus === 'testing' ? 'Testando...' : 'Testar chave atual'}
+                    </button>
+                  )}
+                  {!geminiDeleteConfirm ? (
+                    <button onClick={() => setGeminiDeleteConfirm(true)} className={s.btnDanger}>
+                      Apagar chave
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs ${s.textSecondary}`}>Confirmar exclusão?</span>
+                      <button
+                        onClick={() => removeGemini.mutate()}
+                        disabled={removeGemini.isPending}
+                        className={`${s.btnDanger} text-xs py-1 px-2`}
+                      >
+                        Sim, apagar
+                      </button>
+                      <button
+                        onClick={() => setGeminiDeleteConfirm(false)}
+                        className={`${s.btnSecondary} text-xs py-1 px-2`}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800`}>
+                  <p className="text-sm text-amber-800 dark:text-amber-300">
+                    ⚠️ Nenhuma chave cadastrada. Sistema usando apenas Playwright.
+                  </p>
+                </div>
+                <div>
+                  <label className={s.label}>Gemini API Key</label>
+                  <input
+                    type="password"
+                    value={geminiKey}
+                    onChange={(e) => { setGeminiKey(e.target.value); setGeminiTestStatus('idle'); }}
+                    placeholder="Cole sua chave do Gemini aqui"
+                    className={s.inputMono}
+                    autoComplete="off"
+                  />
+                  <p className={s.hint}>
+                    Obtenha em <span className="font-mono">aistudio.google.com</span>. Salva de forma criptografada.
+                  </p>
+                </div>
+                <button
+                  onClick={() => saveGemini.mutate()}
+                  disabled={saveGemini.isPending || !geminiKey.trim()}
+                  className={s.btnPrimary}
+                >
+                  {saveGemini.isPending ? 'Testando...' : 'Salvar e Testar'}
+                </button>
+              </>
+            )}
 
             {geminiTestStatus !== 'idle' && geminiTestStatus !== 'testing' && (
               <div className={geminiTestStatus.ok ? s.alertSuccess : s.alertError}>
                 {geminiTestStatus.ok ? '✅ ' : '❌ '}{geminiTestStatus.message}
               </div>
-            )}
-
-            {!settingsQ.data?.gemini_key_set && geminiTestStatus === 'idle' && (
-              <p className={`text-xs ${s.textMuted}`}>
-                💡 Com a chave Gemini configurada, links em revisão humana são analisados automaticamente por visão computacional.
-              </p>
             )}
           </div>
         </section>

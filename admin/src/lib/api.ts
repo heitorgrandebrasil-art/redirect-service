@@ -183,6 +183,8 @@ export const saveGeminiKey = (api_key: string) =>
   api.post('/settings/gemini-key', { api_key }).then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null } });
 export const deleteGeminiKey = () =>
   api.delete('/settings/gemini-key').then((r) => r.data);
+export const testCurrentGeminiKey = () =>
+  api.post('/settings/gemini-key/test').then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null } });
 
 export interface VerificationHistory {
   total: number;

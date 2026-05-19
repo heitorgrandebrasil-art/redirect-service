@@ -58,6 +58,19 @@ export default async function settingsRoutes(fastify) {
     return reply.send({ status: 'ok' });
   });
 
+  // Gemini API key — test current saved key
+  fastify.post('/settings/gemini-key/test', async (request, reply) => {
+    const apiKey = await settingsService.getSetting('gemini_api_key');
+    if (!apiKey) {
+      return reply.code(404).send({ status: 'error', message: 'Nenhuma chave cadastrada' });
+    }
+    const testResult = await testGeminiKey(apiKey);
+    if (testResult.ok) {
+      await query(`UPDATE app_settings SET updated_at = now() WHERE key = 'gemini_api_key'`);
+    }
+    return reply.send({ status: 'ok', test: testResult });
+  });
+
   // Verification history — stats + last 50 feedbacks
   fastify.get('/settings/verification-history', async (request, reply) => {
     const totalRow = await query(`SELECT COUNT(*) AS total FROM link_feedbacks`);
