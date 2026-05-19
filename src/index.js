@@ -25,6 +25,7 @@ import { ensureRedirectClickSchema } from './services/redirect-service.js';
 import { ensureVideoCampaignSchema } from './services/video-service.js';
 import { errorHandler } from './middleware/error-handler.js';
 import * as authService from './services/auth-service.js';
+import { initBrowser, closeBrowser } from './services/browser-pool.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +73,8 @@ const start = async () => {
     await app.listen({ port: config.app.port, host: config.app.host });
     logger.info({ event: 'server.started', port: config.app.port, host: config.app.host });
     linkScheduler.reload().catch((err) => logger.warn({ event: 'scheduler.init.error', error: err.message }));
+    // Browser starts in background — API is ready before Chromium finishes launching
+    initBrowser().catch((err) => logger.warn({ event: 'browser.startup.error', error: err.message }));
   } catch (error) {
     logger.fatal({ event: 'server.start.failed', message: error.message, stack: error.stack });
     process.exit(1);
@@ -88,3 +91,6 @@ async function maybeCreateAdminUser() {
 }
 
 start();
+
+process.once('SIGTERM', () => closeBrowser().catch(() => {}));
+process.once('SIGINT',  () => closeBrowser().catch(() => {}));

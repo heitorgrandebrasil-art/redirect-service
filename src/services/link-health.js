@@ -6,11 +6,14 @@ import {
   buildBrokenLinkMessage,
   buildInlineKeyboard,
 } from './telegram-service.js';
+import { withPage, isBrowserAvailable } from './browser-pool.js';
 
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const BOT_UA = 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)';
 const ML_HOSTS     = ['mercadolivre.com.br', 'mercadolivre.com', 'ml.com'];
 const AMAZON_HOSTS = ['amazon.com.br', 'amazon.com', 'amzn.to'];
+// shope.ee (no 'p') is where Shopee redirects broken/expired short links
+const SHOPEE_HOSTS = ['shopee.com.br', 'shopee.com', 's.shopee.com.br', 'shp.ee', 'shope.ee'];
 
 function isMercadoLivreUrl(url) {
   try {
@@ -24,6 +27,84 @@ function isAmazonUrl(url) {
     const { hostname } = new URL(url);
     return AMAZON_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
   } catch { return false; }
+}
+
+function isShopeeUrl(url) {
+  try {
+    const { hostname } = new URL(url);
+    return SHOPEE_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
+  } catch { return false; }
+}
+
+// Shopee renders products client-side (CSR shell, no SSR product data).
+// Reliable signals available without executing JavaScript:
+//   - Broken: redirect to shope.ee/error_page (expired/invalid short link)
+//   - Broken: redirect to shopee.com.br home page
+//   - Broken: HTTP 404/410
+//   - OK:     final URL contains Shopee's canonical product pattern -i.{shopId}.{itemId}
+//   - Unknown: anything else → human_review (stock cannot be verified without JS)
+async function checkShopeeUrl(url) {
+  const headers = {
+    'User-Agent': BROWSER_UA,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+  };
+
+  async function doFetch() {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal, headers });
+      clearTimeout(tid);
+      return res;
+    } catch (err) {
+      clearTimeout(tid);
+      throw err;
+    }
+  }
+
+  try {
+    let res = await doFetch();
+
+    // Retry once on 503 — Shopee occasionally throttles on first hit
+    if (res.status === 503) {
+      await new Promise((r) => setTimeout(r, 2000));
+      res = await doFetch();
+    }
+
+    if (res.status === 404 || res.status === 410) {
+      return { ok: false, status: res.status };
+    }
+
+    if (res.status === 503 || res.status >= 500) {
+      return { ok: false, status: res.status, humanReview: true };
+    }
+
+    const finalUrl = res.url ?? url;
+
+    // Broken: short link expired/invalid — Shopee redirects to shope.ee/error_page
+    if (finalUrl.includes('error_page') || finalUrl.includes('error-page')) {
+      return { ok: false, status: res.status };
+    }
+
+    // Broken: redirected to Shopee home page (product removed)
+    if (/^https?:\/\/(?:www\.)?shopee\.com\.br\/?(?:[?#].*)?$/.test(finalUrl)) {
+      return { ok: false, status: res.status };
+    }
+
+    // OK: canonical Shopee product URL (-i.{shopId}.{itemId}) resolved successfully.
+    // Stock level is not verifiable without executing JavaScript (CSR-only site),
+    // but the product page exists and the listing is active.
+    if (/[-/]i\.\d+\.\d+/.test(finalUrl)) {
+      return { ok: true, status: res.status };
+    }
+
+    // Can't determine from URL/status alone — flag for manual review
+    return { ok: false, status: res.status, humanReview: true };
+  } catch (err) {
+    return { ok: false, status: 0, error: err.message };
+  }
 }
 
 async function checkAmazonUrl(url) {
@@ -147,12 +228,135 @@ async function checkMercadoLivreUrl(url) {
   }
 }
 
-async function checkUrl(url) {
-  if (isMercadoLivreUrl(url)) {
+// ─── Playwright-based checks ────────────────────────────────────────────────
+// Each function tries the browser path first and falls back to the fetch
+// implementation if Playwright is unavailable or throws.
+
+async function checkAmazonWithBrowser(url) {
+  try {
+    return await withPage(async (page) => {
+      await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+      const finalUrl = page.url();
+
+      if (finalUrl.includes('dogs-of-amazon') || finalUrl.includes('dogsofamazon')) {
+        return { ok: false, status: 404 };
+      }
+
+      const availText = await page.locator('#availability').textContent({ timeout: 5_000 }).catch(() => '');
+      const lower = availText.toLowerCase();
+
+      if (lower.includes('em estoque') || lower.includes('in stock')) return { ok: true, status: 200 };
+      if (
+        lower.includes('não temos previsão') ||
+        lower.includes('currently unavailable') ||
+        lower.includes('atualmente não disponível') ||
+        lower.includes('não disponível')
+      ) return { ok: false, status: 200 };
+
+      const addCart = await page.locator('#add-to-cart-button').count().catch(() => 0);
+      if (addCart > 0) return { ok: true, status: 200 };
+
+      const buyNow = await page.locator('#buy-now-button').count().catch(() => 0);
+      if (buyNow > 0) return { ok: true, status: 200 };
+
+      const oos = await page.locator('#outOfStock').count().catch(() => 0);
+      if (oos > 0) return { ok: false, status: 200 };
+
+      return { ok: false, status: 200, humanReview: true };
+    });
+  } catch (err) {
+    logger.warn({ event: 'browser.amazon.fallback', url, error: err.message });
+    return checkAmazonUrl(url);
+  }
+}
+
+async function checkMercadoLivreWithBrowser(url) {
+  try {
+    return await withPage(async (page) => {
+      await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+      const finalUrl = page.url();
+
+      if (
+        finalUrl.includes('melhores-escolha') ||
+        finalUrl.includes('melhores-escolhaa') ||
+        finalUrl.includes('/lists')
+      ) return { ok: false, status: 200 };
+
+      // Wait for either the buybox or a recommendations page
+      await page.waitForSelector('.ui-pdp-buybox, .ui-recommendations-carousel', { timeout: 8_000 }).catch(() => {});
+
+      const buybox = await page.locator('.ui-pdp-buybox').count().catch(() => 0);
+      if (buybox > 0) return { ok: true, status: 200 };
+
+      const carousel = await page.locator('.ui-recommendations-carousel').count().catch(() => 0);
+      if (carousel > 0) return { ok: false, status: 200 };
+
+      // Generic loud button as final signal
+      const loudBtn = await page.locator('.andes-button--loud').count().catch(() => 0);
+      if (loudBtn > 0) return { ok: true, status: 200 };
+
+      return { ok: false, status: 200, humanReview: true };
+    });
+  } catch (err) {
+    logger.warn({ event: 'browser.ml.fallback', url, error: err.message });
     return checkMercadoLivreUrl(url);
   }
+}
+
+async function checkShopeeWithBrowser(url) {
+  try {
+    return await withPage(async (page) => {
+      await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+      const finalUrl = page.url();
+
+      if (finalUrl.includes('error_page') || finalUrl.includes('error-page')) {
+        return { ok: false, status: 200 };
+      }
+      if (/^https?:\/\/(?:www\.)?shopee\.com\.br\/?(?:[?#].*)?$/.test(finalUrl)) {
+        return { ok: false, status: 200 };
+      }
+
+      // Wait for JS to render the product content (buy buttons or error state)
+      await page.waitForSelector(
+        'button:has-text("Comprar Agora"), button:has-text("Adicionar ao Carrinho"), :text("O produto não existe"), :text("Esgotado")',
+        { timeout: 20_000 }
+      ).catch(() => {});
+
+      const notFound = await page.locator(':text("O produto não existe")').count().catch(() => 0);
+      if (notFound > 0) return { ok: false, status: 200 };
+
+      // Active buy buttons confirm the product is purchasable
+      const buyNow = await page.locator('button:has-text("Comprar Agora"):not([disabled]):not([aria-disabled="true"])').count().catch(() => 0);
+      const addCart = await page.locator('button:has-text("Adicionar ao Carrinho"):not([disabled]):not([aria-disabled="true"])').count().catch(() => 0);
+      if (buyNow > 0 || addCart > 0) return { ok: true, status: 200 };
+
+      // "Esgotado" with no active buttons = truly out of stock
+      const esgotado = await page.locator(':text("Esgotado")').count().catch(() => 0);
+      if (esgotado > 0) return { ok: false, status: 200 };
+
+      // Canonical product URL loaded but no deterministic signal found
+      if (/[-/]i\.\d+\.\d+/.test(finalUrl)) return { ok: true, status: 200 };
+
+      return { ok: false, status: 200, humanReview: true };
+    });
+  } catch (err) {
+    logger.warn({ event: 'browser.shopee.fallback', url, error: err.message });
+    return checkShopeeUrl(url);
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
+
+async function checkUrl(url) {
+  const useBrowser = isBrowserAvailable();
+
+  if (isMercadoLivreUrl(url)) {
+    return useBrowser ? checkMercadoLivreWithBrowser(url) : checkMercadoLivreUrl(url);
+  }
   if (isAmazonUrl(url)) {
-    return checkAmazonUrl(url);
+    return useBrowser ? checkAmazonWithBrowser(url) : checkAmazonUrl(url);
+  }
+  if (isShopeeUrl(url)) {
+    return useBrowser ? checkShopeeWithBrowser(url) : checkShopeeUrl(url);
   }
   try {
     const controller = new AbortController();
