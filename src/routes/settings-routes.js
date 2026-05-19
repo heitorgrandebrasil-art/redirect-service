@@ -71,6 +71,63 @@ export default async function settingsRoutes(fastify) {
     return reply.send({ status: 'ok', test: testResult });
   });
 
+  // Check history — size info
+  fastify.get('/settings/history/size', async (request, reply) => {
+    const r = await query(`
+      SELECT
+        pg_total_relation_size('link_check_history')  AS history_bytes,
+        (SELECT COUNT(*) FROM link_check_history)     AS history_rows,
+        pg_total_relation_size('monthly_cycles')      AS cycles_bytes,
+        (SELECT COUNT(*) FROM monthly_cycles)         AS cycles_rows
+    `);
+    const row = r.rows[0];
+    const totalBytes = Number(row.history_bytes) + Number(row.cycles_bytes);
+    return reply.send({
+      status: 'ok',
+      data: {
+        total_bytes: totalBytes,
+        total_mb: (totalBytes / 1_048_576).toFixed(2),
+        history_rows: Number(row.history_rows),
+        cycles_rows: Number(row.cycles_rows),
+      },
+    });
+  });
+
+  // Delete history for previous month only
+  fastify.delete('/settings/history/previous-month', async (request, reply) => {
+    const prevMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 7);
+    const r1 = await query(`DELETE FROM link_check_history WHERE cycle_month = $1`, [prevMonth]);
+    const r2 = await query(`DELETE FROM monthly_cycles WHERE cycle_month = $1`, [prevMonth]);
+    return reply.send({ status: 'ok', data: { deleted_checks: r1.rowCount, deleted_cycles: r2.rowCount, month: prevMonth } });
+  });
+
+  // Delete all history
+  fastify.delete('/settings/history/all', async (request, reply) => {
+    const r1 = await query(`DELETE FROM link_check_history`);
+    const r2 = await query(`DELETE FROM monthly_cycles`);
+    return reply.send({ status: 'ok', data: { deleted_checks: r1.rowCount, deleted_cycles: r2.rowCount } });
+  });
+
+  // Get/set retention setting
+  fastify.get('/settings/history/retention', async (request, reply) => {
+    const val = (await settingsService.getSettingJson('history_retention')) ?? { months: 6 };
+    return reply.send({ status: 'ok', data: val });
+  });
+
+  fastify.patch('/settings/history/retention', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['months'],
+        properties: { months: { type: 'integer', enum: [3, 6, 12, 0] } },
+        additionalProperties: false,
+      }
+    }
+  }, async (request, reply) => {
+    await settingsService.setSettingJson('history_retention', { months: request.body.months });
+    return reply.send({ status: 'ok', data: { months: request.body.months } });
+  });
+
   // Verification history — stats + last 50 feedbacks
   fastify.get('/settings/verification-history', async (request, reply) => {
     const totalRow = await query(`SELECT COUNT(*) AS total FROM link_feedbacks`);

@@ -5,8 +5,150 @@ import {
   setupTotp, enableTotp, disableTotp, regenerateBackupCodes, changePassword,
   checkLinks, getSettings, updateLinkMonitor,
   saveGeminiKey, deleteGeminiKey, testCurrentGeminiKey, getVerificationHistory, LinkCheckItem,
+  getHistorySize, deleteHistoryPreviousMonth, deleteHistoryAll, getHistoryRetention, setHistoryRetention,
 } from '../lib/api';
 import { s } from '../lib/styles';
+
+function HistorySection() {
+  const qc = useQueryClient();
+  const sizeQ = useQuery({ queryKey: ['history-size'], queryFn: getHistorySize });
+  const retentionQ = useQuery({ queryKey: ['history-retention'], queryFn: getHistoryRetention });
+  const [deleteConfirm, setDeleteConfirm] = useState<'prev' | 'all' | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [retention, setRetention] = useState<number>(6);
+
+  useEffect(() => {
+    if (retentionQ.data) setRetention(retentionQ.data.months);
+  }, [retentionQ.data]);
+
+  const deletePrev = useMutation({
+    mutationFn: deleteHistoryPreviousMonth,
+    onSuccess: (d) => {
+      setDeleteConfirm(null);
+      setMsg({ ok: true, text: `Histórico de ${d.month} apagado (${d.deleted_checks} registros).` });
+      qc.invalidateQueries({ queryKey: ['history-size'] });
+    },
+    onError: () => setMsg({ ok: false, text: 'Erro ao apagar histórico.' }),
+  });
+
+  const deleteAll = useMutation({
+    mutationFn: deleteHistoryAll,
+    onSuccess: (d) => {
+      setDeleteConfirm(null);
+      setMsg({ ok: true, text: `Todo o histórico apagado (${d.deleted_checks} registros).` });
+      qc.invalidateQueries({ queryKey: ['history-size'] });
+    },
+    onError: () => setMsg({ ok: false, text: 'Erro ao apagar histórico.' }),
+  });
+
+  const saveRetention = useMutation({
+    mutationFn: () => setHistoryRetention(retention),
+    onSuccess: () => {
+      setMsg({ ok: true, text: 'Retenção atualizada.' });
+      qc.invalidateQueries({ queryKey: ['history-retention'] });
+      setTimeout(() => setMsg(null), 2500);
+    },
+  });
+
+  return (
+    <section className={`${s.cardPad} mb-6`}>
+      <h2 className={`font-semibold ${s.textPrimary} mb-4`}>Histórico de verificações</h2>
+
+      {sizeQ.data && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+          <span className="text-2xl">🗄️</span>
+          <div>
+            <p className={`text-sm font-medium ${s.textPrimary}`}>
+              Tamanho atual: {sizeQ.data.total_mb} MB
+            </p>
+            <p className={`text-xs ${s.textMuted}`}>
+              {sizeQ.data.history_rows.toLocaleString('pt-BR')} verificações · {sizeQ.data.cycles_rows} ciclos mensais
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div>
+          <label className={s.label}>Retenção automática</label>
+          <div className="flex gap-2 items-center">
+            <select
+              value={retention}
+              onChange={(e) => setRetention(Number(e.target.value))}
+              className={`${s.select} flex-1`}
+            >
+              <option value={3}>3 meses</option>
+              <option value={6}>6 meses</option>
+              <option value={12}>1 ano</option>
+              <option value={0}>Sempre (sem limpeza automática)</option>
+            </select>
+            <button
+              onClick={() => saveRetention.mutate()}
+              disabled={saveRetention.isPending}
+              className={s.btnSecondary}
+            >
+              {saveRetention.isPending ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {deleteConfirm !== 'prev' ? (
+            <button
+              onClick={() => setDeleteConfirm('prev')}
+              className={s.btnSecondary}
+            >
+              Apagar histórico do mês anterior
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${s.textSecondary}`}>Confirmar exclusão do mês anterior?</span>
+              <button
+                onClick={() => deletePrev.mutate()}
+                disabled={deletePrev.isPending}
+                className={`${s.btnDanger} text-xs py-1 px-2`}
+              >
+                Sim, apagar
+              </button>
+              <button onClick={() => setDeleteConfirm(null)} className={`${s.btnSecondary} text-xs py-1 px-2`}>
+                Cancelar
+              </button>
+            </div>
+          )}
+
+          {deleteConfirm !== 'all' ? (
+            <button
+              onClick={() => setDeleteConfirm('all')}
+              className={s.btnDanger}
+            >
+              Apagar todo o histórico
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${s.textSecondary}`}>Confirmar exclusão total?</span>
+              <button
+                onClick={() => deleteAll.mutate()}
+                disabled={deleteAll.isPending}
+                className={`${s.btnDanger} text-xs py-1 px-2`}
+              >
+                Sim, apagar tudo
+              </button>
+              <button onClick={() => setDeleteConfirm(null)} className={`${s.btnSecondary} text-xs py-1 px-2`}>
+                Cancelar
+              </button>
+            </div>
+          )}
+        </div>
+
+        {msg && (
+          <div className={msg.ok ? s.alertSuccess : s.alertError}>
+            {msg.text}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export default function Settings() {
   const { user, setAuth } = useAuth();
@@ -487,6 +629,9 @@ export default function Settings() {
           )}
         </section>
       )}
+
+      {/* Histórico mensal — admin only */}
+      {user?.role === 'admin' && <HistorySection />}
 
       {/* 2FA */}
       <section className={s.cardPad}>

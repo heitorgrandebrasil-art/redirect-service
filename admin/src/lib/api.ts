@@ -202,6 +202,20 @@ export interface VerificationHistory {
 export const getVerificationHistory = () =>
   api.get('/settings/verification-history').then((r) => r.data.data as VerificationHistory);
 
+export interface HistorySize {
+  total_bytes: number; total_mb: string; history_rows: number; cycles_rows: number;
+}
+export const getHistorySize = () =>
+  api.get('/settings/history/size').then((r) => r.data.data as HistorySize);
+export const deleteHistoryPreviousMonth = () =>
+  api.delete('/settings/history/previous-month').then((r) => r.data.data as { deleted_checks: number; deleted_cycles: number; month: string });
+export const deleteHistoryAll = () =>
+  api.delete('/settings/history/all').then((r) => r.data.data as { deleted_checks: number; deleted_cycles: number });
+export const getHistoryRetention = () =>
+  api.get('/settings/history/retention').then((r) => r.data.data as { months: number });
+export const setHistoryRetention = (months: number) =>
+  api.patch('/settings/history/retention', { months }).then((r) => r.data.data as { months: number });
+
 // Types
 export interface ProfilePayload {
   name: string;
