@@ -63,4 +63,27 @@ export async function runMigrations() {
   await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS snoozed_until TIMESTAMPTZ`);
   await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS link_last_checked_at TIMESTAMPTZ`);
   await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS monitoring_enabled BOOLEAN NOT NULL DEFAULT true`);
+
+  // Gemini analysis result columns
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS last_gemini_status TEXT`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS last_gemini_confidence FLOAT`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS last_gemini_reason TEXT`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS last_screenshot_path TEXT`);
+
+  // Human feedback log for learning
+  await query(`
+    CREATE TABLE IF NOT EXISTS link_feedbacks (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      marketplace TEXT,
+      playwright_said TEXT,
+      gemini_said TEXT,
+      human_said TEXT NOT NULL CHECK (human_said IN ('ok', 'broken')),
+      screenshot_path TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_link_feedbacks_product_id ON link_feedbacks(product_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_link_feedbacks_created_at ON link_feedbacks(created_at DESC)`);
 }

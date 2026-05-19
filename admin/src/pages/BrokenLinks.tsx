@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { getBrokenLinks, snoozeProduct, BrokenLinkItem } from '../lib/api';
+import { getBrokenLinks, snoozeProduct, submitProductFeedback, BrokenLinkItem } from '../lib/api';
 import { s } from '../lib/styles';
 
 const MARKETPLACE_LABELS: Record<string, string> = {
@@ -31,20 +31,37 @@ function RelativeTime({ iso }: { iso: string | null }) {
   const mins = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
   const days = Math.floor(diff / 86_400_000);
-  let label = mins < 1 ? 'agora mesmo' : mins < 60 ? `há ${mins}min` : hours < 24 ? `há ${hours}h` : `há ${days}d`;
+  const label = mins < 1 ? 'agora mesmo' : mins < 60 ? `há ${mins}min` : hours < 24 ? `há ${hours}h` : `há ${days}d`;
   return <span title={date.toLocaleString('pt-BR')}>{label}</span>;
 }
 
-function LinkCard({ item, onFix, onSnoozed }: {
+function GeminiBadge({ status, confidence }: { status: string | null; confidence: number | null }) {
+  if (!status) return null;
+  const pct = confidence != null ? ` (${Math.round(confidence * 100)}%)` : '';
+  if (status === 'ok') return <span className="text-xs text-green-600 dark:text-green-400">🤖 Gemini: disponível{pct}</span>;
+  if (status === 'broken') return <span className="text-xs text-red-600 dark:text-red-400">🤖 Gemini: quebrado{pct}</span>;
+  return <span className="text-xs text-amber-600 dark:text-amber-400">🤖 Gemini: incerto{pct}</span>;
+}
+
+function LinkCard({ item, onFix, onSnoozed, onFeedback }: {
   item: BrokenLinkItem;
   onFix: () => void;
   onSnoozed: () => void;
+  onFeedback: (verdict: 'ok' | 'broken') => void;
 }) {
+  const isHumanReview = item.link_status === 'human_review';
   const isSnoozed = item.snoozed_until && new Date(item.snoozed_until) > new Date();
   const snoozeUntil = isSnoozed ? new Date(item.snoozed_until!).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : null;
+  const timeIso = isHumanReview ? item.link_last_checked_at : item.link_broken_at;
+
+  const borderClass = isHumanReview
+    ? 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/10'
+    : isSnoozed
+      ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 opacity-60'
+      : 'border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/10';
 
   return (
-    <div className={`rounded-lg border p-4 space-y-3 ${isSnoozed ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 opacity-60' : 'border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/10'}`}>
+    <div className={`rounded-lg border p-4 space-y-3 ${borderClass}`}>
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0 space-y-1">
@@ -61,22 +78,33 @@ function LinkCard({ item, onFix, onSnoozed }: {
           </div>
         </div>
         <div className="text-right shrink-0 text-xs space-y-0.5">
-          {isSnoozed ? (
+          {isHumanReview ? (
+            <span className="text-amber-600 dark:text-amber-400">🔍 Em revisão</span>
+          ) : isSnoozed ? (
             <span className="text-gray-500 dark:text-gray-400">🔕 Até {snoozeUntil}</span>
           ) : item.awaiting_confirmation ? (
             <span className="text-amber-600 dark:text-amber-400">⏳ Aguardando confirmação</span>
           ) : (
             <span className="text-red-600 dark:text-red-400">❌ Não notificado ainda</span>
           )}
-          <p className={`${s.textMuted}`}><RelativeTime iso={item.link_broken_at} /></p>
+          <p className={s.textMuted}><RelativeTime iso={timeIso} /></p>
         </div>
       </div>
 
       {/* Link row */}
       <div className="space-y-1">
-        <p className="text-xs font-medium text-red-700 dark:text-red-400">
-          {errorDescription(item.link_last_status_code)}
-        </p>
+        {isHumanReview ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              Verificação automática inconclusiva
+            </p>
+            <GeminiBadge status={item.last_gemini_status} confidence={item.last_gemini_confidence} />
+          </div>
+        ) : (
+          <p className="text-xs font-medium text-red-700 dark:text-red-400">
+            {errorDescription(item.link_last_status_code)}
+          </p>
+        )}
         <a
           href={item.affiliate_url}
           target="_blank"
@@ -88,13 +116,26 @@ function LinkCard({ item, onFix, onSnoozed }: {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 pt-1">
-        <button onClick={onFix} className={`${s.btnPrimary} text-xs py-1.5 px-3`}>
-          🔗 Corrigir agora
-        </button>
-        <button onClick={onSnoozed} className={`${s.btnSecondary} text-xs py-1.5 px-3`}>
-          🔕 Ignorar 24h
-        </button>
+      <div className="flex gap-2 pt-1 flex-wrap">
+        {isHumanReview ? (
+          <>
+            <button onClick={() => onFeedback('ok')} className={`${s.btnPrimary} text-xs py-1.5 px-3 bg-green-600 hover:bg-green-700 focus:ring-green-500`}>
+              ✅ Marcar como OK
+            </button>
+            <button onClick={() => onFeedback('broken')} className={`${s.btnDanger} text-xs py-1.5 px-3`}>
+              ❌ Marcar como Quebrado
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={onFix} className={`${s.btnPrimary} text-xs py-1.5 px-3`}>
+              🔗 Corrigir agora
+            </button>
+            <button onClick={onSnoozed} className={`${s.btnSecondary} text-xs py-1.5 px-3`}>
+              🔕 Ignorar 24h
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -116,11 +157,15 @@ export default function BrokenLinks() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['broken-links'] }),
   });
 
-  // Unique profile names for filter
+  const feedbackMutation = useMutation({
+    mutationFn: ({ id, verdict }: { id: number; verdict: 'ok' | 'broken' }) =>
+      submitProductFeedback(id, verdict),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['broken-links'] }),
+  });
+
   const profiles = [...new Set(data.map((i) => i.profile_name ?? 'Sem perfil'))].sort();
   const filtered = profileFilter ? data.filter((i) => (i.profile_name ?? 'Sem perfil') === profileFilter) : data;
 
-  // Group by profile
   const groups = filtered.reduce<Record<string, BrokenLinkItem[]>>((acc, item) => {
     const key = item.profile_name ?? 'Sem perfil';
     if (!acc[key]) acc[key] = [];
@@ -128,15 +173,23 @@ export default function BrokenLinks() {
     return acc;
   }, {});
 
+  const brokenCount = data.filter((i) => i.link_status === 'broken').length;
+  const reviewCount = data.filter((i) => i.link_status === 'human_review').length;
+
   return (
     <div className={`${s.page} max-w-3xl`}>
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className={s.h1}>
             Links Quebrados
-            {data.length > 0 && (
-              <span className="ml-3 text-base font-semibold text-red-600 dark:text-red-400">
-                ({data.length})
+            {brokenCount > 0 && (
+              <span className="ml-2 text-base font-semibold text-red-600 dark:text-red-400">
+                ({brokenCount})
+              </span>
+            )}
+            {reviewCount > 0 && (
+              <span className="ml-2 text-base font-semibold text-amber-600 dark:text-amber-400">
+                +{reviewCount} em revisão
               </span>
             )}
           </h1>
@@ -179,6 +232,7 @@ export default function BrokenLinks() {
                 item={item}
                 onFix={() => navigate(`/admin/campaigns/${item.video_id}?fix=${item.id}`)}
                 onSnoozed={() => snoozeMutation.mutate(item.id)}
+                onFeedback={(verdict) => feedbackMutation.mutate({ id: item.id, verdict })}
               />
             ))}
           </div>

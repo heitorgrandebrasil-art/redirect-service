@@ -121,8 +121,11 @@ export interface BrokenLinkItem {
   link_status: string;
   link_broken_at: string | null;
   link_last_status_code: number | null;
+  link_last_checked_at: string | null;
   awaiting_confirmation: boolean;
   snoozed_until: string | null;
+  last_gemini_status: string | null;
+  last_gemini_confidence: number | null;
   video_id: number;
   video_title: string;
   platform: string;
@@ -162,16 +165,43 @@ export const checkProductLink = (id: number) =>
     ok: boolean; humanReview: boolean; httpStatus: number; linkStatus: string;
   });
 
+export const submitProductFeedback = (id: number, verdict: 'ok' | 'broken') =>
+  api.post(`/products/${id}/feedback`, { verdict }).then((r) => r.data);
+
 // Settings (admin)
+export interface SettingsData {
+  monitor: { enabled: boolean; frequency_hours: number; last_run: string | null };
+  openai_key_set: boolean;
+  gemini_key_set: boolean;
+  gemini_key_last4: string | null;
+  gemini_key_updated_at: string | null;
+}
 export const getSettings = () =>
-  api.get('/settings').then((r) => r.data.data as {
-    monitor: { enabled: boolean; frequency_hours: number; last_run: string | null };
-    openai_key_set: boolean;
-  });
+  api.get('/settings').then((r) => r.data.data as SettingsData);
 export const updateLinkMonitor = (data: { enabled?: boolean; frequency_hours?: number }) =>
   api.patch('/settings/monitor', data).then((r) => r.data.data);
 export const updateOpenAIKey = (api_key: string) =>
   api.put('/settings/openai-key', { api_key }).then((r) => r.data);
+export const saveGeminiKey = (api_key: string) =>
+  api.post('/settings/gemini-key', { api_key }).then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null } });
+export const deleteGeminiKey = () =>
+  api.delete('/settings/gemini-key').then((r) => r.data);
+
+export interface VerificationHistory {
+  total: number;
+  gemini_total: number;
+  gemini_correct: number;
+  gemini_uncertain: number;
+  human_ok: number;
+  human_broken: number;
+  feedbacks: Array<{
+    id: number; url: string; marketplace: string | null;
+    playwright_said: string | null; gemini_said: string | null;
+    human_said: string; created_at: string; product_title: string | null;
+  }>;
+}
+export const getVerificationHistory = () =>
+  api.get('/settings/verification-history').then((r) => r.data.data as VerificationHistory);
 
 // Types
 export interface ProfilePayload {

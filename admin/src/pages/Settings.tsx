@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import {
   setupTotp, enableTotp, disableTotp, regenerateBackupCodes, changePassword,
-  checkLinks, getSettings, updateLinkMonitor, updateOpenAIKey, LinkCheckItem,
+  checkLinks, getSettings, updateLinkMonitor, updateOpenAIKey,
+  saveGeminiKey, deleteGeminiKey, getVerificationHistory, LinkCheckItem,
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -82,7 +83,6 @@ export default function Settings() {
   const [monitorSaved, setMonitorSaved]     = useState(false);
   const [monitorError, setMonitorError]     = useState('');
 
-  // Sync only when server data arrives or changes — NOT on every render
   useEffect(() => {
     if (!settingsQ.data) return;
     const m = settingsQ.data.monitor;
@@ -109,6 +109,56 @@ export default function Settings() {
     onSuccess: () => { setOpenAIKey(''); setOpenAISaved(true); settingsQ.refetch(); setTimeout(() => setOpenAISaved(false), 2500); },
   });
 
+  // Gemini key
+  const [geminiKey, setGeminiKey] = useState('');
+  const [geminiTestStatus, setGeminiTestStatus] = useState<'idle' | 'testing' | { ok: boolean; message: string }>('idle');
+  const [geminiDeleteConfirm, setGeminiDeleteConfirm] = useState(false);
+
+  const saveGemini = useMutation({
+    mutationFn: () => saveGeminiKey(geminiKey),
+    onMutate: () => setGeminiTestStatus('testing'),
+    onSuccess: (data) => {
+      if (data.test.ok) {
+        setGeminiKey('');
+        setGeminiTestStatus({ ok: true, message: 'Chave válida e funcionando!' });
+        settingsQ.refetch();
+      } else {
+        setGeminiTestStatus({ ok: false, message: geminiErrorMessage(data.test.error, data.test.code) });
+      }
+    },
+    onError: () => setGeminiTestStatus({ ok: false, message: 'Erro ao salvar a chave. Tente novamente.' }),
+  });
+
+  const removeGemini = useMutation({
+    mutationFn: deleteGeminiKey,
+    onSuccess: () => {
+      setGeminiDeleteConfirm(false);
+      setGeminiTestStatus({ ok: true, message: 'Chave apagada. Você pode adicionar uma nova chave a qualquer momento.' });
+      settingsQ.refetch();
+    },
+  });
+
+  function geminiErrorMessage(error?: string, code?: number | null): string {
+    if (code === 401 || code === 403 || error?.includes('API_KEY_INVALID') || error?.includes('invalid')) {
+      return 'Chave inválida. Verifique se copiou corretamente em aistudio.google.com';
+    }
+    if (code === 429 || error?.includes('quota') || error?.includes('RESOURCE_EXHAUSTED')) {
+      return 'Limite de uso atingido. Aguarde alguns minutos ou verifique sua cota no Google AI Studio.';
+    }
+    if (error?.includes('fetch') || error?.includes('network') || error?.includes('ECONNREFUSED')) {
+      return 'Não foi possível conectar à API do Gemini. Verifique sua conexão.';
+    }
+    return error ? `Erro: ${error}` : 'Erro desconhecido ao testar a chave.';
+  }
+
+  // Verification history
+  const [showHistory, setShowHistory] = useState(false);
+  const historyQ = useQuery({
+    queryKey: ['verification-history'],
+    queryFn: getVerificationHistory,
+    enabled: showHistory && user?.role === 'admin',
+  });
+
   return (
     <div className={`${s.page} max-w-2xl`}>
       <div className="mb-8">
@@ -127,24 +177,11 @@ export default function Settings() {
         >
           <div>
             <label className={s.label}>Senha atual</label>
-            <input
-              type="password"
-              value={currentPw}
-              onChange={(e) => setCurrentPw(e.target.value)}
-              required
-              className={s.input}
-            />
+            <input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} required className={s.input} />
           </div>
           <div>
             <label className={s.label}>Nova senha (mín. 8 caracteres)</label>
-            <input
-              type="password"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              required
-              minLength={8}
-              className={s.input}
-            />
+            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} required minLength={8} className={s.input} />
           </div>
           <button type="submit" disabled={changePw.isPending} className={s.btnPrimary}>
             {changePw.isPending ? 'Alterando...' : 'Alterar senha'}
@@ -206,7 +243,9 @@ export default function Settings() {
           <p className={`text-sm ${s.textSecondary} mb-4`}>
             Usada como fallback quando o sistema não consegue determinar automaticamente se um produto está disponível.
           </p>
-          <div className="space-y-3">
+
+          {/* OpenAI */}
+          <div className="space-y-3 mb-6">
             <div>
               <label className={s.label}>OpenAI API Key</label>
               <input
@@ -224,15 +263,89 @@ export default function Settings() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => saveOpenAI.mutate()}
-                disabled={saveOpenAI.isPending || !openAIKey.trim()}
-                className={s.btnPrimary}
-              >
+              <button onClick={() => saveOpenAI.mutate()} disabled={saveOpenAI.isPending || !openAIKey.trim()} className={s.btnPrimary}>
                 {saveOpenAI.isPending ? 'Salvando...' : 'Salvar chave'}
               </button>
               {openAISaved && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo</span>}
             </div>
+          </div>
+
+          {/* Gemini */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-5 space-y-3">
+            <div>
+              <label className={s.label}>Gemini API Key</label>
+              {settingsQ.data?.gemini_key_set && (
+                <p className={`text-xs ${s.textMuted} mb-1`}>
+                  Chave configurada: ●●●●●●●●●●●●{settingsQ.data.gemini_key_last4}
+                  {settingsQ.data.gemini_key_updated_at && (
+                    <span className="ml-2">
+                      · atualizada em {new Date(settingsQ.data.gemini_key_updated_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  )}
+                </p>
+              )}
+              <input
+                type="password"
+                value={geminiKey}
+                onChange={(e) => { setGeminiKey(e.target.value); setGeminiTestStatus('idle'); }}
+                placeholder={settingsQ.data?.gemini_key_set ? 'Cole aqui para substituir a chave atual' : 'AIza...'}
+                className={s.inputMono}
+                autoComplete="off"
+              />
+              {!settingsQ.data?.gemini_key_set && (
+                <p className={s.hint}>
+                  Obtenha sua chave em <span className="font-mono">aistudio.google.com</span>. Salva de forma criptografada.
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => saveGemini.mutate()}
+                disabled={saveGemini.isPending || !geminiKey.trim()}
+                className={s.btnPrimary}
+              >
+                {saveGemini.isPending ? 'Testando...' : 'Salvar e Testar'}
+              </button>
+              {settingsQ.data?.gemini_key_set && !geminiDeleteConfirm && (
+                <button
+                  onClick={() => setGeminiDeleteConfirm(true)}
+                  className={s.btnDanger}
+                >
+                  Apagar chave
+                </button>
+              )}
+              {geminiDeleteConfirm && (
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${s.textSecondary}`}>Confirmar?</span>
+                  <button
+                    onClick={() => removeGemini.mutate()}
+                    disabled={removeGemini.isPending}
+                    className={`${s.btnDanger} text-xs py-1 px-2`}
+                  >
+                    Sim, apagar
+                  </button>
+                  <button
+                    onClick={() => setGeminiDeleteConfirm(false)}
+                    className={`${s.btnSecondary} text-xs py-1 px-2`}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {geminiTestStatus !== 'idle' && geminiTestStatus !== 'testing' && (
+              <div className={geminiTestStatus.ok ? s.alertSuccess : s.alertError}>
+                {geminiTestStatus.ok ? '✅ ' : '❌ '}{geminiTestStatus.message}
+              </div>
+            )}
+
+            {!settingsQ.data?.gemini_key_set && geminiTestStatus === 'idle' && (
+              <p className={`text-xs ${s.textMuted}`}>
+                💡 Com a chave Gemini configurada, links em revisão humana são analisados automaticamente por visão computacional.
+              </p>
+            )}
           </div>
         </section>
       )}
@@ -266,7 +379,7 @@ export default function Settings() {
                         key={item.id}
                         className={`flex items-center gap-3 px-4 py-2.5 ${item.ok ? '' : 'bg-red-50 dark:bg-red-900/10'}`}
                       >
-                        <span>{item.ok ? '✅' : '❌'}</span>
+                        <span>{item.ok ? '✅' : (item as any).humanReview ? '🔍' : '❌'}</span>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{item.title}</p>
                           <p className={`text-xs ${s.textMuted} truncate`}>
@@ -274,11 +387,84 @@ export default function Settings() {
                           </p>
                         </div>
                         <span className={`text-xs font-mono shrink-0 ${item.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          HTTP {item.status || 'erro'}
+                          {(item as any).humanReview ? 'revisão' : `HTTP ${item.status || 'erro'}`}
                         </span>
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Histórico de verificações — admin only */}
+      {user?.role === 'admin' && (
+        <section className={`${s.cardPad} mb-6`}>
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className={`flex items-center justify-between w-full text-left`}
+          >
+            <h2 className={`font-semibold ${s.textPrimary}`}>Histórico de verificações</h2>
+            <span className={s.textMuted}>{showHistory ? '▲' : '▼'}</span>
+          </button>
+
+          {showHistory && (
+            <div className="mt-4">
+              {historyQ.isLoading && <p className={`text-sm ${s.textMuted}`}>Carregando...</p>}
+              {historyQ.data && (
+                <div className="space-y-4">
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      { label: 'Total feedbacks', value: historyQ.data.total },
+                      {
+                        label: 'Acerto Gemini',
+                        value: historyQ.data.gemini_total > 0
+                          ? `${Math.round((historyQ.data.gemini_correct / historyQ.data.gemini_total) * 100)}%`
+                          : '—',
+                      },
+                      { label: 'Confirmados OK', value: historyQ.data.human_ok },
+                      { label: 'Confirmados Quebrado', value: historyQ.data.human_broken },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-center">
+                        <p className={`text-xl font-semibold ${s.textPrimary}`}>{value}</p>
+                        <p className={`text-xs ${s.textMuted} mt-0.5`}>{label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Feedbacks list */}
+                  {historyQ.data.feedbacks.length === 0 ? (
+                    <p className={`text-sm ${s.textMuted}`}>Nenhum feedback registrado ainda.</p>
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs">
+                      <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {historyQ.data.feedbacks.map((fb) => (
+                          <div key={fb.id} className="px-4 py-2.5 flex items-center gap-3">
+                            <span>{fb.human_said === 'ok' ? '✅' : '❌'}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-medium ${s.textPrimary} truncate`}>
+                                {fb.product_title ?? fb.url}
+                              </p>
+                              <div className="flex gap-2 flex-wrap mt-0.5">
+                                {fb.marketplace && <span className={s.textMuted}>{fb.marketplace}</span>}
+                                {fb.gemini_said && (
+                                  <span className={fb.gemini_said === fb.human_said ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                                    🤖 {fb.gemini_said}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <span className={s.textMuted}>
+                              {new Date(fb.created_at).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

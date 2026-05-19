@@ -61,8 +61,19 @@ export async function getSettingsSnapshot() {
   const openaiKeyRow = await query(
     `SELECT value IS NOT NULL AS is_set FROM app_settings WHERE key = 'openai_api_key'`
   );
+  const geminiRow = await query(
+    `SELECT value, updated_at FROM app_settings WHERE key = 'gemini_api_key'`
+  );
+  let gemini_key_last4 = null;
+  if (geminiRow.rowCount > 0) {
+    const decrypted = decryptValue(geminiRow.rows[0].value);
+    gemini_key_last4 = decrypted ? decrypted.slice(-4) : null;
+  }
   return {
     monitor,
     openai_key_set: openaiKeyRow.rows[0]?.is_set ?? false,
+    gemini_key_set: geminiRow.rowCount > 0,
+    gemini_key_last4,
+    gemini_key_updated_at: geminiRow.rows[0]?.updated_at ?? null,
   };
 }

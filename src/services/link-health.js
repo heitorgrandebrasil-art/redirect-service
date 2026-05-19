@@ -1,3 +1,4 @@
+import { mkdir, readdir, stat, unlink } from 'fs/promises';
 import { query } from '../db.js';
 import logger from '../logger.js';
 import config from '../config.js';
@@ -7,6 +8,7 @@ import {
   buildInlineKeyboard,
 } from './telegram-service.js';
 import { withPage, isBrowserAvailable } from './browser-pool.js';
+import { analyzeScreenshot } from './gemini-service.js';
 
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const BOT_UA = 'Mozilla/5.0 (compatible; LinkHealthBot/1.0)';
@@ -34,6 +36,50 @@ function isShopeeUrl(url) {
     const { hostname } = new URL(url);
     return SHOPEE_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
   } catch { return false; }
+}
+
+const SCREENSHOT_DIR = '/tmp/screenshots';
+
+async function takeScreenshot(page) {
+  try {
+    await mkdir(SCREENSHOT_DIR, { recursive: true });
+    const path = `${SCREENSHOT_DIR}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.png`;
+    await page.screenshot({ path, fullPage: false, timeout: 8_000 });
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+// Runs Gemini Vision on a screenshot when Playwright returned human_review.
+// Updates products table with Gemini result and returns an updated check object.
+// If Gemini is confident (>= 0.8), resolves humanReview; otherwise leaves it as-is.
+async function applyGemini(check, productId) {
+  if (!check.humanReview || !check.screenshotPath) return check;
+  const gemini = await analyzeScreenshot(check.screenshotPath);
+  if (!gemini) return check;
+  await query(
+    `UPDATE products SET last_gemini_status = $2, last_gemini_confidence = $3, last_gemini_reason = $4, last_screenshot_path = $5 WHERE id = $1`,
+    [productId, gemini.status, gemini.confidence, gemini.reason, check.screenshotPath]
+  );
+  if (gemini.confidence >= 0.8 && gemini.status !== 'uncertain') {
+    return { ok: gemini.status === 'ok', status: check.status, screenshotPath: check.screenshotPath };
+  }
+  return check;
+}
+
+async function cleanOldScreenshots() {
+  try {
+    const files = await readdir(SCREENSHOT_DIR).catch(() => []);
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    await Promise.allSettled(
+      files.map(async (f) => {
+        const fp = `${SCREENSHOT_DIR}/${f}`;
+        const st = await stat(fp).catch(() => null);
+        if (st && st.mtime.getTime() < cutoff) await unlink(fp).catch(() => {});
+      })
+    );
+  } catch {}
 }
 
 // Shopee renders products client-side (CSR shell, no SSR product data).
@@ -262,7 +308,8 @@ async function checkAmazonWithBrowser(url) {
       const oos = await page.locator('#outOfStock').count().catch(() => 0);
       if (oos > 0) return { ok: false, status: 200 };
 
-      return { ok: false, status: 200, humanReview: true };
+      const screenshotPath = await takeScreenshot(page);
+      return { ok: false, status: 200, humanReview: true, screenshotPath };
     });
   } catch (err) {
     logger.warn({ event: 'browser.amazon.fallback', url, error: err.message });
@@ -295,7 +342,8 @@ async function checkMercadoLivreWithBrowser(url) {
       const loudBtn = await page.locator('.andes-button--loud').count().catch(() => 0);
       if (loudBtn > 0) return { ok: true, status: 200 };
 
-      return { ok: false, status: 200, humanReview: true };
+      const screenshotPath = await takeScreenshot(page);
+      return { ok: false, status: 200, humanReview: true, screenshotPath };
     });
   } catch (err) {
     logger.warn({ event: 'browser.ml.fallback', url, error: err.message });
@@ -337,7 +385,8 @@ async function checkShopeeWithBrowser(url) {
       // Canonical product URL loaded but no deterministic signal found
       if (/[-/]i\.\d+\.\d+/.test(finalUrl)) return { ok: true, status: 200 };
 
-      return { ok: false, status: 200, humanReview: true };
+      const screenshotPath = await takeScreenshot(page);
+      return { ok: false, status: 200, humanReview: true, screenshotPath };
     });
   } catch (err) {
     logger.warn({ event: 'browser.shopee.fallback', url, error: err.message });
@@ -384,6 +433,7 @@ async function checkUrl(url) {
 }
 
 export async function checkAllLinks() {
+  cleanOldScreenshots().catch(() => {});
   const result = await query(`
     SELECT
       p.id,
@@ -417,7 +467,8 @@ export async function checkAllLinks() {
   const allResults = [];
 
   for (const p of products) {
-    const check = await checkUrl(p.affiliate_url);
+    let check = await checkUrl(p.affiliate_url);
+    if (check.humanReview) check = await applyGemini(check, p.id);
 
     // Always record when the product was last checked
     await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
@@ -431,6 +482,7 @@ export async function checkAllLinks() {
       url: p.affiliate_url,
       ok: check.ok,
       status: check.status,
+      humanReview: check.humanReview ?? false,
     });
 
     if (!check.ok) {
@@ -529,7 +581,8 @@ export async function checkLinksForVideo(videoId) {
   const results = [];
 
   for (const p of products) {
-    const check = await checkUrl(p.affiliate_url);
+    let check = await checkUrl(p.affiliate_url);
+    if (check.humanReview) check = await applyGemini(check, p.id);
 
     await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
 
@@ -578,7 +631,8 @@ export async function checkSingleProduct(productId) {
   if (result.rowCount === 0 || !result.rows[0].affiliate_url) return null;
   const p = result.rows[0];
 
-  const check = await checkUrl(p.affiliate_url);
+  let check = await checkUrl(p.affiliate_url);
+  if (check.humanReview) check = await applyGemini(check, p.id);
   await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
 
   if (check.humanReview) {
