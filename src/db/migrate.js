@@ -86,4 +86,47 @@ export async function runMigrations() {
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_link_feedbacks_product_id ON link_feedbacks(product_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_link_feedbacks_created_at ON link_feedbacks(created_at DESC)`);
+
+  // Priority-based scheduling columns
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS priority_tier TEXT NOT NULL DEFAULT 'cold'`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS monthly_clicks INT NOT NULL DEFAULT 0`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS priority_recalculated_at TIMESTAMPTZ`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_products_next_check ON products(next_check_at) WHERE monitoring_enabled = true`);
+
+  // Link check history
+  await query(`
+    CREATE TABLE IF NOT EXISTS link_check_history (
+      id             SERIAL PRIMARY KEY,
+      product_id     INTEGER REFERENCES products(id) ON DELETE CASCADE,
+      url            TEXT NOT NULL,
+      marketplace    TEXT,
+      playwright_status TEXT,
+      gemini_status  TEXT,
+      final_status   TEXT NOT NULL,
+      reason         TEXT,
+      confidence     FLOAT,
+      human_feedback TEXT,
+      cycle_month    TEXT,
+      checked_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_lch_product_id ON link_check_history(product_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_lch_checked_at ON link_check_history(checked_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_lch_cycle_month ON link_check_history(cycle_month)`);
+
+  // Monthly cycle tracking
+  await query(`
+    CREATE TABLE IF NOT EXISTS monthly_cycles (
+      id               SERIAL PRIMARY KEY,
+      cycle_month      TEXT NOT NULL UNIQUE,
+      total_checked    INT NOT NULL DEFAULT 0,
+      total_ok         INT NOT NULL DEFAULT 0,
+      total_broken     INT NOT NULL DEFAULT 0,
+      total_human_review INT NOT NULL DEFAULT 0,
+      gemini_calls     INT NOT NULL DEFAULT 0,
+      started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+      ended_at         TIMESTAMPTZ
+    )
+  `);
 }
