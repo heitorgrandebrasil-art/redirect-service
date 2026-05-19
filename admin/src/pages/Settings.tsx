@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import {
   setupTotp, enableTotp, disableTotp, regenerateBackupCodes, changePassword,
-  checkLinks, getSettings, updateLinkMonitor, updateOpenAIKey,
+  checkLinks, getSettings, updateLinkMonitor,
   saveGeminiKey, deleteGeminiKey, getVerificationHistory, LinkCheckItem,
 } from '../lib/api';
 import { s } from '../lib/styles';
@@ -101,14 +101,6 @@ export default function Settings() {
     onError: (e: any) => setMonitorError(e.response?.data?.message || 'Erro ao salvar configurações'),
   });
 
-  // OpenAI key
-  const [openAIKey, setOpenAIKey]     = useState('');
-  const [openAISaved, setOpenAISaved] = useState(false);
-  const saveOpenAI = useMutation({
-    mutationFn: () => updateOpenAIKey(openAIKey),
-    onSuccess: () => { setOpenAIKey(''); setOpenAISaved(true); settingsQ.refetch(); setTimeout(() => setOpenAISaved(false), 2500); },
-  });
-
   // Gemini key
   const [geminiKey, setGeminiKey] = useState('');
   const [geminiTestStatus, setGeminiTestStatus] = useState<'idle' | 'testing' | { ok: boolean; message: string }>('idle');
@@ -139,16 +131,22 @@ export default function Settings() {
   });
 
   function geminiErrorMessage(error?: string, code?: number | null): string {
-    if (code === 401 || code === 403 || error?.includes('API_KEY_INVALID') || error?.includes('invalid')) {
+    // Pure network failure — no HTTP status received (code is null/undefined)
+    if (code == null && (error?.includes('ECONNREFUSED') || error?.includes('ENOTFOUND') || error?.includes('ETIMEDOUT') || error?.toLowerCase().includes('failed to fetch'))) {
+      return 'Não foi possível conectar à API do Gemini. Verifique sua conexão.';
+    }
+    if (code === 400 || code === 401 || code === 403 || error?.includes('API_KEY_INVALID') || error?.includes('API key not valid')) {
       return 'Chave inválida. Verifique se copiou corretamente em aistudio.google.com';
     }
     if (code === 429 || error?.includes('quota') || error?.includes('RESOURCE_EXHAUSTED')) {
       return 'Limite de uso atingido. Aguarde alguns minutos ou verifique sua cota no Google AI Studio.';
     }
-    if (error?.includes('fetch') || error?.includes('network') || error?.includes('ECONNREFUSED')) {
-      return 'Não foi possível conectar à API do Gemini. Verifique sua conexão.';
+    if (code === 404 || error?.includes('is not found') || error?.includes('not_found')) {
+      return 'Modelo indisponível. Verifique se a API Gemini está ativa no seu projeto em aistudio.google.com';
     }
-    return error ? `Erro: ${error}` : 'Erro desconhecido ao testar a chave.';
+    return error
+      ? `Erro ao conectar com a API do Gemini (código ${code ?? 'sem resposta'})`
+      : 'Erro desconhecido ao testar a chave.';
   }
 
   // Verification history
@@ -244,34 +242,8 @@ export default function Settings() {
             Usada como fallback quando o sistema não consegue determinar automaticamente se um produto está disponível.
           </p>
 
-          {/* OpenAI */}
-          <div className="space-y-3 mb-6">
-            <div>
-              <label className={s.label}>OpenAI API Key</label>
-              <input
-                type="password"
-                value={openAIKey}
-                onChange={(e) => setOpenAIKey(e.target.value)}
-                placeholder={settingsQ.data?.openai_key_set ? '••••••••••••• (já configurada)' : 'sk-...'}
-                className={s.inputMono}
-                autoComplete="off"
-              />
-              <p className={s.hint}>
-                {settingsQ.data?.openai_key_set
-                  ? 'Uma chave já está salva. Preencha para substituí-la.'
-                  : 'Salva de forma criptografada no banco de dados.'}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => saveOpenAI.mutate()} disabled={saveOpenAI.isPending || !openAIKey.trim()} className={s.btnPrimary}>
-                {saveOpenAI.isPending ? 'Salvando...' : 'Salvar chave'}
-              </button>
-              {openAISaved && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo</span>}
-            </div>
-          </div>
-
           {/* Gemini */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-5 space-y-3">
+          <div className="space-y-3">
             <div>
               <label className={s.label}>Gemini API Key</label>
               {settingsQ.data?.gemini_key_set && (

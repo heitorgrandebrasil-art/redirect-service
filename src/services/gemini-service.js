@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from 'fs';
 import { getSetting } from './settings-service.js';
 import logger from '../logger.js';
 
-const MODEL = 'gemini-2.0-flash-exp';
+const MODEL = 'gemini-2.0-flash';
 const PROMPT = `Analise esta captura de tela de uma página de produto de e-commerce. Responda APENAS em JSON com a estrutura exata:
 {"status":"ok","reason":"motivo curto em português","confidence":0.9}
 

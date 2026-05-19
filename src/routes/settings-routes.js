@@ -32,20 +32,6 @@ export default async function settingsRoutes(fastify) {
     return reply.send({ status: 'ok', data: updated });
   });
 
-  fastify.put('/settings/openai-key', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['api_key'],
-        properties: { api_key: { type: 'string', minLength: 1 } },
-        additionalProperties: false,
-      }
-    }
-  }, async (request, reply) => {
-    await settingsService.setSetting('openai_api_key', request.body.api_key, true);
-    return reply.send({ status: 'ok' });
-  });
-
   // Gemini API key — save + test
   fastify.post('/settings/gemini-key', {
     schema: {

@@ -58,9 +58,6 @@ export async function getSettingsSnapshot() {
   const monitor = (await getSettingJson('link_monitor')) ?? {
     enabled: false, frequency_hours: 24, preferred_hour: 8, last_run: null,
   };
-  const openaiKeyRow = await query(
-    `SELECT value IS NOT NULL AS is_set FROM app_settings WHERE key = 'openai_api_key'`
-  );
   const geminiRow = await query(
     `SELECT value, updated_at FROM app_settings WHERE key = 'gemini_api_key'`
   );
@@ -71,7 +68,6 @@ export async function getSettingsSnapshot() {
   }
   return {
     monitor,
-    openai_key_set: openaiKeyRow.rows[0]?.is_set ?? false,
     gemini_key_set: geminiRow.rowCount > 0,
     gemini_key_last4,
     gemini_key_updated_at: geminiRow.rows[0]?.updated_at ?? null,

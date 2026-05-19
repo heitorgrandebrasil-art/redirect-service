@@ -171,7 +171,6 @@ export const submitProductFeedback = (id: number, verdict: 'ok' | 'broken') =>
 // Settings (admin)
 export interface SettingsData {
   monitor: { enabled: boolean; frequency_hours: number; last_run: string | null };
-  openai_key_set: boolean;
   gemini_key_set: boolean;
   gemini_key_last4: string | null;
   gemini_key_updated_at: string | null;
@@ -180,8 +179,6 @@ export const getSettings = () =>
   api.get('/settings').then((r) => r.data.data as SettingsData);
 export const updateLinkMonitor = (data: { enabled?: boolean; frequency_hours?: number }) =>
   api.patch('/settings/monitor', data).then((r) => r.data.data);
-export const updateOpenAIKey = (api_key: string) =>
-  api.put('/settings/openai-key', { api_key }).then((r) => r.data);
 export const saveGeminiKey = (api_key: string) =>
   api.post('/settings/gemini-key', { api_key }).then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null } });
 export const deleteGeminiKey = () =>
