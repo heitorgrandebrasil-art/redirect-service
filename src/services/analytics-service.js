@@ -26,8 +26,11 @@ async function getClicksByDevice() {
   const result = await query(`
     SELECT
       ${DEVICE_SQL} AS device,
-      COUNT(*)::int AS clicks
-    FROM redirect_clicks
+      COUNT(rc.id)::int AS clicks
+    FROM redirect_clicks rc
+    JOIN redirects r ON r.id = rc.redirect_id
+    JOIN products p ON p.id = r.product_id
+    WHERE p.video_id IS NOT NULL
     GROUP BY device
     ORDER BY clicks DESC
   `);
@@ -41,8 +44,9 @@ async function getClicksByPlatform() {
       COUNT(rc.id)::int AS clicks
     FROM redirect_clicks rc
     JOIN redirects r ON r.id = rc.redirect_id
-    LEFT JOIN products p ON p.id = r.product_id
-    LEFT JOIN videos v ON v.id = p.video_id
+    JOIN products p ON p.id = r.product_id
+    JOIN videos v ON v.id = p.video_id
+    WHERE p.video_id IS NOT NULL
     GROUP BY lower(v.platform)
     ORDER BY clicks DESC
     LIMIT 10
@@ -69,7 +73,11 @@ async function getTopCampaigns() {
 async function getTotals() {
   const result = await query(`
     SELECT
-      (SELECT COUNT(*)::int FROM redirect_clicks) AS total_clicks,
+      (SELECT COUNT(rc.id)::int
+         FROM redirect_clicks rc
+         JOIN redirects r ON r.id = rc.redirect_id
+         JOIN products p ON p.id = r.product_id
+         WHERE p.video_id IS NOT NULL) AS total_clicks,
       (SELECT COUNT(*)::int FROM videos) AS total_campaigns,
       (SELECT COUNT(*)::int FROM profiles) AS total_profiles,
       (SELECT COUNT(*)::int FROM products
@@ -98,10 +106,13 @@ async function getClicksByDay() {
       '1 day'::interval
     ) AS gs(day)
     LEFT JOIN (
-      SELECT DATE(created_at) AS day, COUNT(*)::int AS clicks
-      FROM redirect_clicks
-      WHERE created_at >= CURRENT_DATE - INTERVAL '29 days'
-      GROUP BY DATE(created_at)
+      SELECT DATE(rc.created_at) AS day, COUNT(rc.id)::int AS clicks
+      FROM redirect_clicks rc
+      JOIN redirects r ON r.id = rc.redirect_id
+      JOIN products p ON p.id = r.product_id
+      WHERE p.video_id IS NOT NULL
+        AND rc.created_at >= CURRENT_DATE - INTERVAL '29 days'
+      GROUP BY DATE(rc.created_at)
     ) cnt ON cnt.day = gs.day::date
     ORDER BY gs.day
   `);
