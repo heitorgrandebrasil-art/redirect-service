@@ -17,10 +17,10 @@ const PLATFORM_COLORS: Record<string, string> = {
   facebook: '#3b82f6', x: '#4b5563', outros: '#a78bfa', other: '#a78bfa',
 };
 const STATUS_COLORS: Record<string, string> = {
-  ok: '#10b981', broken: '#ef4444', unknown: '#9ca3af', snoozed: '#f59e0b',
+  ok: '#10b981', broken: '#ef4444', human_review: '#f97316', unknown: '#9ca3af', snoozed: '#f59e0b',
 };
 const STATUS_LABELS: Record<string, string> = {
-  ok: 'OK', broken: 'Quebrado', unknown: 'Desconhecido', snoozed: 'Adiado',
+  ok: 'OK', broken: 'Quebrado', human_review: 'Em revisão', unknown: 'Desconhecido', snoozed: 'Adiado',
 };
 
 const CHART_AXIS = '#9ca3af';

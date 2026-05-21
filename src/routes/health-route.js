@@ -191,7 +191,12 @@ export default async function healthRoutes(fastify) {
   fastify.post('/admin/broken-links/cleanup', {
     preHandler: [authenticateJWT, requireRole('admin')]
   }, async (request, reply) => {
-    const orphaned = await query(`
+    // Products whose video was deleted (ON DELETE SET NULL left video_id = NULL)
+    const noVideo = await query(`
+      DELETE FROM products WHERE video_id IS NULL RETURNING id
+    `);
+    // Products with a dangling video_id (video row no longer exists)
+    const dangling = await query(`
       DELETE FROM products
       WHERE video_id IS NOT NULL
         AND video_id NOT IN (SELECT id FROM videos)
@@ -202,8 +207,8 @@ export default async function healthRoutes(fastify) {
       WHERE LOWER(marketplace) = 'shopee'
       RETURNING id
     `);
-    const removed = orphaned.rowCount + shopee.rowCount;
-    logger.info({ event: 'broken-links.cleanup', removed, orphaned: orphaned.rowCount, shopee: shopee.rowCount });
+    const removed = noVideo.rowCount + dangling.rowCount + shopee.rowCount;
+    logger.info({ event: 'broken-links.cleanup', removed, noVideo: noVideo.rowCount, dangling: dangling.rowCount, shopee: shopee.rowCount });
     return reply.send({ status: 'ok', removed });
   });
 

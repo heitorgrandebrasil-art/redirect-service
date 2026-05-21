@@ -72,9 +72,17 @@ async function getTotals() {
       (SELECT COUNT(*)::int FROM redirect_clicks) AS total_clicks,
       (SELECT COUNT(*)::int FROM videos) AS total_campaigns,
       (SELECT COUNT(*)::int FROM profiles) AS total_profiles,
-      (SELECT COUNT(*)::int FROM products WHERE affiliate_url IS NOT NULL AND affiliate_url != '') AS total_links,
-      (SELECT COUNT(*)::int FROM products WHERE affiliate_url IS NOT NULL AND affiliate_url != '' AND link_status = 'ok') AS links_ok,
-      (SELECT COUNT(*)::int FROM products WHERE link_status = 'broken') AS links_broken
+      (SELECT COUNT(*)::int FROM products
+         WHERE video_id IS NOT NULL
+           AND affiliate_url IS NOT NULL AND affiliate_url != '') AS total_links,
+      (SELECT COUNT(*)::int FROM products
+         WHERE video_id IS NOT NULL
+           AND affiliate_url IS NOT NULL AND affiliate_url != ''
+           AND link_status = 'ok') AS links_ok,
+      (SELECT COUNT(*)::int FROM products
+         WHERE video_id IS NOT NULL
+           AND affiliate_url IS NOT NULL AND affiliate_url != ''
+           AND link_status IN ('broken', 'human_review')) AS links_broken
   `);
   return result.rows[0];
 }
@@ -109,7 +117,8 @@ async function getLinkStatusDistribution() {
       END AS status,
       COUNT(*)::int AS count
     FROM products
-    WHERE affiliate_url IS NOT NULL AND affiliate_url != ''
+    WHERE video_id IS NOT NULL
+      AND affiliate_url IS NOT NULL AND affiliate_url != ''
     GROUP BY status
     ORDER BY count DESC
   `);
