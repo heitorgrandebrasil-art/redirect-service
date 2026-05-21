@@ -25,6 +25,8 @@ export default function Campaigns() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [profileFilter, setProfileFilter] = useState<number | ''>('');
+  const [sortKey, setSortKey] = useState<'broken' | 'clicks'>('broken');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const create = useMutation({
     mutationFn: () => createVideo(form),
@@ -41,12 +43,24 @@ export default function Campaigns() {
   function closeModal() { setShowModal(false); }
   function field(key: keyof VideoPayload, value: any) { setForm((f) => ({ ...f, [key]: value })); }
 
+  function toggleSort(key: 'broken' | 'clicks') {
+    if (sortKey === key) setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+    else { setSortKey(key); setSortDir('desc'); }
+  }
+
   const profileMap = new Map((profiles.data ?? []).map((p: any) => [p.id, p]));
-  const filtered = (videos.data ?? []).filter((v: any) => {
-    if (profileFilter !== '' && v.profile_id !== profileFilter) return false;
-    if (search && !v.title.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  const filtered = (videos.data ?? [])
+    .filter((v: any) => {
+      if (profileFilter !== '' && v.profile_id !== profileFilter) return false;
+      if (search && !v.title.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a: any, b: any) => {
+      const val = (v: any) => sortKey === 'broken'
+        ? (v.broken_links_count ?? 0)
+        : (v.total_clicks ?? 0);
+      return sortDir === 'desc' ? val(b) - val(a) : val(a) - val(b);
+    });
 
   return (
     <div className={s.page}>
@@ -92,7 +106,18 @@ export default function Campaigns() {
               <th className={s.th}>Título</th>
               <th className={s.th}>Plataforma</th>
               <th className={s.th}>Perfil</th>
-              <th className={s.th}>Cliques</th>
+              <th
+                className={`${s.th} cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200`}
+                onClick={() => toggleSort('clicks')}
+              >
+                Cliques {sortKey === 'clicks' ? (sortDir === 'desc' ? '↓' : '↑') : <span className="opacity-30">↕</span>}
+              </th>
+              <th
+                className={`${s.th} cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200`}
+                onClick={() => toggleSort('broken')}
+              >
+                Links Quebrados {sortKey === 'broken' ? (sortDir === 'desc' ? '↓' : '↑') : <span className="opacity-30">↕</span>}
+              </th>
               <th className={s.th} />
             </tr>
           </thead>
@@ -132,6 +157,22 @@ export default function Campaigns() {
                   <td className="px-6 py-4 text-sm font-semibold text-gray-800 dark:text-gray-200">
                     {(v.total_clicks ?? 0).toLocaleString('pt-BR')}
                   </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1.5">
+                      {(v.broken_links_count ?? 0) > 0 ? (
+                        <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full">
+                          {v.broken_links_count}
+                        </span>
+                      ) : (
+                        <span className={`text-sm ${s.textMuted}`}>0</span>
+                      )}
+                      {(v.human_review_count ?? 0) > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 bg-orange-500 text-white text-xs font-bold rounded-full">
+                          {v.human_review_count}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Link
@@ -153,7 +194,7 @@ export default function Campaigns() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className={`px-6 py-10 text-center ${s.textMuted} text-sm`}>
+                <td colSpan={6} className={`px-6 py-10 text-center ${s.textMuted} text-sm`}>
                   {search || profileFilter !== '' ? 'Nenhuma campanha encontrada.' : 'Nenhuma campanha cadastrada ainda.'}
                 </td>
               </tr>

@@ -14,7 +14,11 @@ export async function ensureVideoCampaignSchema() {
 
 export async function listVideos() {
   const sql = `
-    SELECT v.*, COALESCE(c.total_clicks, 0)::int AS total_clicks
+    SELECT
+      v.*,
+      COALESCE(c.total_clicks,        0)::int AS total_clicks,
+      COALESCE(b.broken_links_count,  0)::int AS broken_links_count,
+      COALESCE(h.human_review_count,  0)::int AS human_review_count
     FROM videos v
     LEFT JOIN (
       SELECT p.video_id, COUNT(rc.id) AS total_clicks
@@ -24,6 +28,18 @@ export async function listVideos() {
       WHERE p.video_id IS NOT NULL
       GROUP BY p.video_id
     ) c ON c.video_id = v.id
+    LEFT JOIN (
+      SELECT video_id, COUNT(*) AS broken_links_count
+      FROM products
+      WHERE link_status = 'broken' AND video_id IS NOT NULL
+      GROUP BY video_id
+    ) b ON b.video_id = v.id
+    LEFT JOIN (
+      SELECT video_id, COUNT(*) AS human_review_count
+      FROM products
+      WHERE awaiting_confirmation = true AND video_id IS NOT NULL
+      GROUP BY video_id
+    ) h ON h.video_id = v.id
     ORDER BY v.created_at DESC`;
   const result = await query(sql);
   return result.rows;
