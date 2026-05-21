@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getVideo, listVideoProducts, createVideoProduct, deleteProduct, replaceProductLink,
   markProductFixed, toggleProductMonitoring, listDomains, getConfig, checkVideoLinks,
-  checkProductLink, type ProductPayload
+  checkProductLink, submitProductFeedback, type ProductPayload
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -189,6 +189,18 @@ export default function CampaignDetail() {
   const monitoringToggle = useMutation({
     mutationFn: ({ pid, enabled }: { pid: number; enabled: boolean }) => toggleProductMonitoring(pid, enabled),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['video-products', videoId] }),
+  });
+
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
+  const reviewProduct = useMutation({
+    mutationFn: ({ pid, verdict }: { pid: number; verdict: 'ok' | 'broken' }) =>
+      submitProductFeedback(pid, verdict),
+    onMutate: ({ pid }) => setReviewingId(pid),
+    onSettled: () => setReviewingId(null),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['video-products', videoId] });
+      qc.invalidateQueries({ queryKey: ['broken-links'] });
+    },
   });
 
   const checkLinks = useMutation({
@@ -376,6 +388,24 @@ export default function CampaignDetail() {
                                 {/* Status row */}
                                 <div className="flex items-center gap-3 mt-2 flex-wrap">
                                   <StatusBadge status={p.link_status ?? 'unknown'} code={p.link_last_status_code} />
+                                  {p.link_status === 'human_review' && (
+                                    <>
+                                      <button
+                                        onClick={() => reviewProduct.mutate({ pid: p.id, verdict: 'broken' })}
+                                        disabled={reviewingId === p.id}
+                                        className="text-xs px-2 py-0.5 rounded border font-medium text-red-600 dark:text-red-400 border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                      >
+                                        {reviewingId === p.id ? '⏳' : '🔴'} Quebrado
+                                      </button>
+                                      <button
+                                        onClick={() => reviewProduct.mutate({ pid: p.id, verdict: 'ok' })}
+                                        disabled={reviewingId === p.id}
+                                        className="text-xs px-2 py-0.5 rounded border font-medium text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                      >
+                                        {reviewingId === p.id ? '⏳' : '✅'} OK
+                                      </button>
+                                    </>
+                                  )}
                                   <span className={`text-xs ${s.textMuted}`}>
                                     Verificado: <RelativeTime iso={p.link_last_checked_at} />
                                   </span>
