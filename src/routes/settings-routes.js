@@ -124,6 +124,68 @@ export default async function settingsRoutes(fastify) {
     return reply.send({ status: 'ok', data: { months: request.body.months } });
   });
 
+  // History stats — summary cards + chart + last 50 records
+  fastify.get('/settings/history/stats', async (request, reply) => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    const [cycleR, pendingR, geminiR, dailyR, recordsR] = await Promise.all([
+      query(
+        `SELECT total_checked, total_ok, total_broken, total_human_review, gemini_calls
+         FROM monthly_cycles WHERE cycle_month = $1`,
+        [currentMonth]
+      ),
+      query(`SELECT COUNT(*) AS cnt FROM products WHERE awaiting_confirmation = true`),
+      query(`
+        SELECT
+          COUNT(*) FILTER (WHERE gemini_said IS NOT NULL)                               AS gemini_total,
+          COUNT(*) FILTER (WHERE gemini_said = human_said AND gemini_said IS NOT NULL)  AS gemini_correct
+        FROM link_feedbacks
+      `),
+      query(`
+        SELECT
+          TO_CHAR(checked_at, 'YYYY-MM-DD') AS day,
+          COUNT(*) AS total
+        FROM link_check_history
+        WHERE checked_at >= now() - INTERVAL '30 days'
+        GROUP BY day
+        ORDER BY day
+      `),
+      query(`
+        SELECT
+          lch.id, lch.url, lch.marketplace, lch.playwright_status,
+          lch.gemini_status, lch.final_status, lch.human_feedback,
+          lch.checked_at, lch.confidence,
+          p.title AS product_title
+        FROM link_check_history lch
+        LEFT JOIN products p ON p.id = lch.product_id
+        ORDER BY lch.checked_at DESC
+        LIMIT 50
+      `),
+    ]);
+
+    const cycle = cycleR.rows[0] ?? { total_checked: 0, total_ok: 0, total_broken: 0, gemini_calls: 0 };
+    const geminiTotal   = Number(geminiR.rows[0].gemini_total);
+    const geminiCorrect = Number(geminiR.rows[0].gemini_correct);
+
+    return reply.send({
+      status: 'ok',
+      data: {
+        month: currentMonth,
+        summary: {
+          total_checked:        Number(cycle.total_checked),
+          total_ok:             Number(cycle.total_ok),
+          total_broken:         Number(cycle.total_broken),
+          pending_human_review: Number(pendingR.rows[0].cnt),
+          gemini_calls:         Number(cycle.gemini_calls),
+          gemini_accuracy:      geminiTotal > 0 ? Math.round((geminiCorrect / geminiTotal) * 100) : null,
+          gemini_total:         geminiTotal,
+        },
+        daily:   dailyR.rows.map((r) => ({ day: String(r.day), total: Number(r.total) })),
+        records: recordsR.rows,
+      },
+    });
+  });
+
   // Verification history — stats + last 50 feedbacks
   fastify.get('/settings/verification-history', async (request, reply) => {
     const totalRow = await query(`SELECT COUNT(*) AS total FROM link_feedbacks`);

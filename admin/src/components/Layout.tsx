@@ -12,12 +12,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/admin', label: 'Dashboard', icon: '⊞' },
-  { to: '/admin/profiles', label: 'Perfis', icon: '◑' },
-  { to: '/admin/domains', label: 'Domínios', icon: '◎' },
-  { to: '/admin/campaigns', label: 'Campanhas', icon: '◈' },
-  { to: '/admin/settings', label: 'Configurações', icon: '⚙' },
-  { to: '/admin/users', label: 'Usuários', icon: '☰', adminOnly: true }
+  { to: '/admin',           label: 'Dashboard',     icon: '⊞' },
+  { to: '/admin/profiles',  label: 'Perfis',        icon: '◑' },
+  { to: '/admin/domains',   label: 'Domínios',      icon: '◎' },
+  { to: '/admin/campaigns', label: 'Campanhas',     icon: '◈' },
+  { to: '/admin/history',   label: 'Histórico',     icon: '📈', adminOnly: true },
+  { to: '/admin/settings',  label: 'Configurações', icon: '⚙' },
+  { to: '/admin/users',     label: 'Usuários',      icon: '☰', adminOnly: true },
 ];
 
 export default function Layout() {
@@ -46,16 +47,15 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin).map((item) => (
+          {/* Top-level items: Dashboard, Perfis, Domínios, Campanhas */}
+          {NAV_ITEMS.filter((item) => !item.adminOnly && item.to !== '/admin/settings').map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/admin'}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-brand-600 text-white'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                  isActive ? 'bg-brand-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                 }`
               }
             >
@@ -63,6 +63,8 @@ export default function Layout() {
               {item.label}
             </NavLink>
           ))}
+
+          {/* Links Quebrados — special render for badge */}
           <NavLink
             to="/admin/broken-links"
             className={({ isActive }) =>
@@ -83,6 +85,22 @@ export default function Layout() {
               </span>
             )}
           </NavLink>
+
+          {/* Admin-only + Configurações */}
+          {NAV_ITEMS.filter((item) => item.adminOnly || item.to === '/admin/settings').filter((item) => !item.adminOnly || isAdmin).map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive ? 'bg-brand-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                }`
+              }
+            >
+              <span className="text-base w-5 text-center">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="px-3 py-4 border-t border-gray-800 space-y-1">

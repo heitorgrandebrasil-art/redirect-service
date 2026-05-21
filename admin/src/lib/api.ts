@@ -186,6 +186,34 @@ export const deleteGeminiKey = () =>
 export const testCurrentGeminiKey = () =>
   api.post('/settings/gemini-key/test').then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null; isFreeTierExhausted?: boolean } });
 
+export interface HistoryStats {
+  month: string;
+  summary: {
+    total_checked: number;
+    total_ok: number;
+    total_broken: number;
+    pending_human_review: number;
+    gemini_calls: number;
+    gemini_accuracy: number | null;
+    gemini_total: number;
+  };
+  daily: Array<{ day: string; total: number }>;
+  records: Array<{
+    id: number;
+    url: string;
+    marketplace: string | null;
+    playwright_status: string | null;
+    gemini_status: string | null;
+    final_status: string;
+    human_feedback: string | null;
+    checked_at: string;
+    confidence: number | null;
+    product_title: string | null;
+  }>;
+}
+export const getHistoryStats = () =>
+  api.get('/settings/history/stats').then((r) => r.data.data as HistoryStats);
+
 export interface VerificationHistory {
   total: number;
   gemini_total: number;

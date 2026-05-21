@@ -12,6 +12,7 @@ import CampaignDetail from './pages/CampaignDetail';
 import Settings from './pages/Settings';
 import Users from './pages/Users';
 import BrokenLinks from './pages/BrokenLinks';
+import History from './pages/History';
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const { token, isAdmin } = useAuth();
@@ -37,6 +38,11 @@ function AppRoutes() {
         <Route path="campaigns" element={<Campaigns />} />
         <Route path="campaigns/:id" element={<CampaignDetail />} />
         <Route path="broken-links" element={<BrokenLinks />} />
+        <Route path="history" element={
+          <ProtectedRoute adminOnly>
+            <History />
+          </ProtectedRoute>
+        } />
         <Route path="settings" element={<Settings />} />
         <Route path="setup-2fa" element={<Setup2FA />} />
         <Route path="users" element={
