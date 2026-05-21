@@ -130,11 +130,17 @@ export default async function settingsRoutes(fastify) {
 
     const [cycleR, pendingR, geminiR, dailyR, recordsR] = await Promise.all([
       query(
-        `SELECT total_checked, total_ok, total_broken, total_human_review, gemini_calls
-         FROM monthly_cycles WHERE cycle_month = $1`,
+        `SELECT
+           COUNT(*)::int                                                   AS total_checked,
+           COUNT(*) FILTER (WHERE final_status = 'ok')::int               AS total_ok,
+           COUNT(*) FILTER (WHERE final_status = 'broken')::int           AS total_broken,
+           COUNT(*) FILTER (WHERE final_status = 'human_review')::int     AS total_human_review,
+           COUNT(*) FILTER (WHERE gemini_status IS NOT NULL)::int         AS gemini_calls
+         FROM link_check_history
+         WHERE cycle_month = $1`,
         [currentMonth]
       ),
-      query(`SELECT COUNT(*) AS cnt FROM products WHERE awaiting_confirmation = true`),
+      query(`SELECT COUNT(*) AS cnt FROM products WHERE link_status = 'human_review'`),
       query(`
         SELECT
           COUNT(*) FILTER (WHERE gemini_said IS NOT NULL)                               AS gemini_total,
@@ -163,7 +169,7 @@ export default async function settingsRoutes(fastify) {
       `),
     ]);
 
-    const cycle = cycleR.rows[0] ?? { total_checked: 0, total_ok: 0, total_broken: 0, gemini_calls: 0 };
+    const cycle = cycleR.rows[0] ?? { total_checked: 0, total_ok: 0, total_broken: 0, total_human_review: 0, gemini_calls: 0 };
     const geminiTotal   = Number(geminiR.rows[0].gemini_total);
     const geminiCorrect = Number(geminiR.rows[0].gemini_correct);
 
