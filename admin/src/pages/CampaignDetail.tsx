@@ -84,6 +84,19 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+// ─── Tooltip helper ────────────────────────────────────────────────────────────
+
+function InfoTip({ tip }: { tip: string }) {
+  return (
+    <span className="relative group inline-flex items-center cursor-help ml-1">
+      <span className="text-gray-400 dark:text-gray-500 text-xs leading-none">ℹ️</span>
+      <span className="absolute left-5 bottom-0 z-20 hidden group-hover:block w-64 text-xs text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl px-3 py-2 leading-relaxed pointer-events-none">
+        {tip}
+      </span>
+    </span>
+  );
+}
+
 // ─── URI sanitizer ─────────────────────────────────────────────────────────────
 
 function sanitizeUri(raw: string): string {
@@ -160,7 +173,7 @@ export default function CampaignDetail() {
       setShowAdd(false);
       if (newProduct?.id) setTimeout(() => checkSingleProduct(newProduct.id), 3000);
     },
-    onError: (e: any) => setAddError(e.response?.data?.message || 'Erro ao adicionar link'),
+    onError: (e: any) => setAddError(e.response?.data?.message || '❌ Não foi possível adicionar o link. Tente de novo.'),
   });
 
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -171,7 +184,7 @@ export default function CampaignDetail() {
       qc.invalidateQueries({ queryKey: ['video-products', videoId] });
       qc.invalidateQueries({ queryKey: ['broken-links'] });
     },
-    onError: (e: any) => setRemoveError(e.response?.data?.message || 'Erro ao remover link'),
+    onError: (e: any) => setRemoveError(e.response?.data?.message || '❌ Não foi possível remover o link. Tente de novo.'),
   });
 
   const replaceLink = useMutation({
@@ -183,7 +196,7 @@ export default function CampaignDetail() {
       setNewUrl('');
       setTimeout(() => checkSingleProduct(pid), 3000);
     },
-    onError: (e: any) => setReplaceError(e.response?.data?.message || 'URL inválida'),
+    onError: (e: any) => setReplaceError(e.response?.data?.message || '❌ Cole um link válido. Exemplo: https://mercadolivre.com/produto...'),
   });
 
   const monitoringToggle = useMutation({
@@ -416,7 +429,7 @@ export default function CampaignDetail() {
                                   )}
                                   <button
                                     onClick={() => monitoringToggle.mutate({ pid: p.id, enabled: !monitoring })}
-                                    title={monitoring ? 'Desativar monitoramento deste link' : 'Ativar monitoramento deste link'}
+                                    title="Quando ativado, o sistema verifica automaticamente se esse link ainda está funcionando."
                                     className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
                                       monitoring
                                         ? 'text-gray-400 border-gray-200 dark:border-gray-700 hover:text-gray-600'
@@ -577,7 +590,10 @@ export default function CampaignDetail() {
                   {addError && <div className={s.alertError}>{addError}</div>}
 
                   <div>
-                    <label className={s.label}>Marketplace</label>
+                    <div className="flex items-center mb-1">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Marketplace</label>
+                      <InfoTip tip="Escolha onde o produto está sendo vendido." />
+                    </div>
                     <select
                       value={form.marketplace}
                       onChange={(e) => { setAddMkt(e.target.value as MarketplaceKey); field('marketplace', e.target.value); }}
@@ -594,14 +610,20 @@ export default function CampaignDetail() {
                   </div>
 
                   <div>
-                    <label className={s.label}>Link de afiliado *</label>
+                    <div className="flex items-center mb-1">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Link de afiliado *</label>
+                      <InfoTip tip="Cole aqui o link do produto que você quer divulgar. Exemplo: https://mercadolivre.com/produto-x..." />
+                    </div>
                     <input value={form.affiliate_url} onChange={(e) => field('affiliate_url', e.target.value)}
                       className={s.inputMono} placeholder="https://..." />
                   </div>
 
                   {/* Domain + URI row */}
                   <div>
-                    <label className={s.label}>Link curto (opcional)</label>
+                    <div className="flex items-center mb-1">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Link curto (opcional)</label>
+                      <InfoTip tip="Crie um endereço fácil de lembrar para o seu link. Exemplo: seu-dominio.com/r/tenis-nike" />
+                    </div>
                     <div className="flex gap-2 items-center">
                       <select
                         value={form.domain_id ?? ''}

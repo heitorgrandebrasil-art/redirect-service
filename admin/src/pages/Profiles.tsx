@@ -61,7 +61,7 @@ export default function Profiles() {
       return editing?.id ? updateProfile(editing.id, payload) : createProfile(payload);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['profiles'] }); closeModal(); },
-    onError: (e: any) => setError(e.response?.data?.message || 'Erro ao salvar'),
+    onError: (e: any) => setError(e.response?.data?.message || '❌ Não foi possível salvar o perfil. Tente de novo.'),
   });
 
   const remove = useMutation({
@@ -71,8 +71,8 @@ export default function Profiles() {
 
   const testBot = useMutation({
     mutationFn: (id: number) => testTelegramBot(id),
-    onSuccess: (_, id) => setTgStatus({ id, ok: true, msg: 'Mensagem enviada com sucesso!' }),
-    onError: (e: any, id) => setTgStatus({ id, ok: false, msg: e.response?.data?.message || 'Erro ao enviar' }),
+    onSuccess: (_, id) => setTgStatus({ id, ok: true, msg: '✅ Mensagem enviada! Verifique seu Telegram.' }),
+    onError: (e: any, id) => setTgStatus({ id, ok: false, msg: e.response?.data?.message || '❌ Não foi possível enviar. Verifique o token e tente de novo.' }),
   });
 
   function openCreate() { setEditing(null); setForm(EMPTY); setError(''); setShowModal(true); }

@@ -31,7 +31,7 @@ export default function Campaigns() {
   const create = useMutation({
     mutationFn: () => createVideo(form),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['videos'] }); closeModal(); },
-    onError: (e: any) => setError(e.response?.data?.message || 'Erro ao criar campanha'),
+    onError: (e: any) => setError(e.response?.data?.message || '❌ Não foi possível criar a campanha. Tente de novo.'),
   });
 
   const remove = useMutation({

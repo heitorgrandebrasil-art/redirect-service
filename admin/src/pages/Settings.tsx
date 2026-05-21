@@ -20,7 +20,7 @@ export default function Settings() {
   const changePw = useMutation({
     mutationFn: () => changePassword(currentPw, newPw),
     onSuccess: () => { setPwSuccess(true); setCurrentPw(''); setNewPw(''); setPwError(''); },
-    onError: (e: any) => setPwError(e.response?.data?.message || 'Erro ao alterar senha')
+    onError: (e: any) => setPwError(e.response?.data?.message || '❌ Não foi possível alterar a senha. Tente de novo.')
   });
 
   const [totpStep, setTotpStep] = useState<'idle' | 'setup' | 'codes'>('idle');
@@ -98,7 +98,7 @@ export default function Settings() {
       settingsQ.refetch();
       setTimeout(() => setMonitorSaved(false), 2500);
     },
-    onError: (e: any) => setMonitorError(e.response?.data?.message || 'Erro ao salvar configurações'),
+    onError: (e: any) => setMonitorError(e.response?.data?.message || '❌ Não foi possível salvar. Tente de novo.'),
   });
 
   // Gemini key
@@ -111,12 +111,12 @@ export default function Settings() {
     mutationFn: () => saveGeminiKey(geminiKey),
     onSuccess: () => {
       setGeminiKey('');
-      setGeminiSaveStatus({ ok: true, message: 'Chave salva com sucesso!' });
+      setGeminiSaveStatus({ ok: true, message: '✅ Pronto! Chave do Gemini salva.' });
       setGeminiTestStatus('idle');
       settingsQ.refetch();
       setTimeout(() => setGeminiSaveStatus('idle'), 4000);
     },
-    onError: () => setGeminiSaveStatus({ ok: false, message: 'Erro ao salvar a chave. Tente novamente.' }),
+    onError: () => setGeminiSaveStatus({ ok: false, message: '❌ Não foi possível salvar a chave. Tente de novo.' }),
   });
 
   const removeGemini = useMutation({
@@ -140,7 +140,7 @@ export default function Settings() {
         setGeminiTestStatus({ ok: false, message: geminiErrorMessage(data.test.error, data.test.code, data.test.isFreeTierExhausted) });
       }
     },
-    onError: () => setGeminiTestStatus({ ok: false, message: 'Erro ao testar a chave.' }),
+    onError: () => setGeminiTestStatus({ ok: false, message: '❌ Não foi possível testar a chave. Tente de novo.' }),
   });
 
   function geminiErrorMessage(error?: string, code?: number | null, isFreeTierExhausted?: boolean): string {
@@ -174,7 +174,7 @@ export default function Settings() {
       {/* Change password */}
       <section className={`${s.cardPad} mb-6`}>
         <h2 className={`font-semibold ${s.textPrimary} mb-4`}>Alterar senha</h2>
-        {pwSuccess && <div className={`${s.alertSuccess} mb-4`}>Senha alterada com sucesso!</div>}
+        {pwSuccess && <div className={`${s.alertSuccess} mb-4`}>✅ Pronto! A senha foi alterada.</div>}
         {pwError && <div className={`${s.alertError} mb-4`}>{pwError}</div>}
         <form
           onSubmit={(e: FormEvent) => { e.preventDefault(); setPwError(''); setPwSuccess(false); changePw.mutate(); }}
@@ -233,7 +233,7 @@ export default function Settings() {
                 <button onClick={() => saveMonitor.mutate()} disabled={saveMonitor.isPending} className={s.btnPrimary}>
                   {saveMonitor.isPending ? 'Salvando...' : 'Salvar configurações'}
                 </button>
-                {monitorSaved && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo</span>}
+                {monitorSaved && <span className="text-xs text-green-600 dark:text-green-400">✅ Configurações salvas!</span>}
               </div>
               {monitorError && <div className={s.alertError}>{monitorError}</div>}
             </div>

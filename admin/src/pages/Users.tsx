@@ -22,7 +22,7 @@ export default function Users() {
       setShowCreate(false);
       setEmail(''); setPassword(''); setRole('operator');
     },
-    onError: (e: any) => setCreateError(e.response?.data?.message || 'Erro ao criar usuário')
+    onError: (e: any) => setCreateError(e.response?.data?.message || '❌ Não foi possível criar o usuário. Tente de novo.')
   });
 
   const remove = useMutation({

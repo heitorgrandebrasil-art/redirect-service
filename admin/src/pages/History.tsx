@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
-  getHistoryStats, getHistorySize, getHistoryRetention, setHistoryRetention,
-  deleteHistoryPreviousMonth, deleteHistoryAll,
+  getHistoryStats, getHistorySize, deleteHistoryAll,
 } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -31,47 +30,22 @@ interface SummaryCard {
 
 export default function History() {
   const qc = useQueryClient();
-  const statsQ    = useQuery({ queryKey: ['history-stats'],     queryFn: getHistoryStats });
-  const sizeQ     = useQuery({ queryKey: ['history-size'],      queryFn: getHistorySize });
-  const retentionQ = useQuery({ queryKey: ['history-retention'], queryFn: getHistoryRetention });
+  const statsQ = useQuery({ queryKey: ['history-stats'], queryFn: getHistoryStats });
+  const sizeQ  = useQuery({ queryKey: ['history-size'],  queryFn: getHistorySize });
 
-  const [retention,      setRetention]      = useState(6);
-  const [deleteConfirm,  setDeleteConfirm]  = useState<'prev' | 'all' | null>(null);
-  const [cleanupMsg,     setCleanupMsg]     = useState<{ ok: boolean; text: string } | null>(null);
-
-  useEffect(() => {
-    if (retentionQ.data) setRetention(retentionQ.data.months);
-  }, [retentionQ.data]);
-
-  const deletePrev = useMutation({
-    mutationFn: deleteHistoryPreviousMonth,
-    onSuccess: (d) => {
-      setDeleteConfirm(null);
-      setCleanupMsg({ ok: true, text: `Histórico de ${d.month} apagado (${d.deleted_checks} registros).` });
-      qc.invalidateQueries({ queryKey: ['history-size'] });
-      qc.invalidateQueries({ queryKey: ['history-stats'] });
-    },
-    onError: () => setCleanupMsg({ ok: false, text: 'Erro ao apagar histórico.' }),
-  });
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [cleanupMsg,      setCleanupMsg]      = useState<{ ok: boolean; text: string } | null>(null);
 
   const deleteAll = useMutation({
     mutationFn: deleteHistoryAll,
-    onSuccess: (d) => {
-      setDeleteConfirm(null);
-      setCleanupMsg({ ok: true, text: `Todo o histórico apagado (${d.deleted_checks} registros).` });
+    onSuccess: () => {
+      setShowDeleteModal(false);
+      setCleanupMsg({ ok: true, text: '✅ Histórico apagado! Os registros começam do zero agora.' });
       qc.invalidateQueries({ queryKey: ['history-size'] });
       qc.invalidateQueries({ queryKey: ['history-stats'] });
+      setTimeout(() => setCleanupMsg(null), 5000);
     },
-    onError: () => setCleanupMsg({ ok: false, text: 'Erro ao apagar histórico.' }),
-  });
-
-  const saveRetention = useMutation({
-    mutationFn: () => setHistoryRetention(retention),
-    onSuccess: () => {
-      setCleanupMsg({ ok: true, text: 'Retenção atualizada.' });
-      qc.invalidateQueries({ queryKey: ['history-retention'] });
-      setTimeout(() => setCleanupMsg(null), 2500);
-    },
+    onError: () => setCleanupMsg({ ok: false, text: '❌ Não foi possível apagar o histórico. Tente de novo.' }),
   });
 
   // Fill last 30 days even when there's no data for a day
@@ -251,95 +225,54 @@ export default function History() {
 
       {/* Cleanup section */}
       <section className={s.cardPad}>
-        <h2 className={`font-semibold ${s.textPrimary} mb-4`}>Gerenciar histórico</h2>
+        <h2 className={`font-semibold ${s.textPrimary} mb-3`}>Gerenciar histórico</h2>
 
         {sizeQ.data && (
-          <div className="flex items-center gap-3 mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-            <span className="text-2xl">🗄️</span>
-            <div>
-              <p className={`text-sm font-medium ${s.textPrimary}`}>
-                Tamanho atual: {sizeQ.data.total_mb} MB
-              </p>
-              <p className={`text-xs ${s.textMuted}`}>
-                {sizeQ.data.history_rows.toLocaleString('pt-BR')} verificações · {sizeQ.data.cycles_rows} ciclos mensais
-              </p>
-            </div>
-          </div>
+          <p className={`text-sm ${s.textMuted} mb-4`}>
+            Histórico ocupa {sizeQ.data.total_mb} MB ({sizeQ.data.history_rows.toLocaleString('pt-BR')} verificações)
+          </p>
         )}
 
-        <div className="space-y-3">
-          <div>
-            <label className={s.label}>Retenção automática</label>
-            <div className="flex gap-2 items-center">
-              <select
-                value={retention}
-                onChange={(e) => setRetention(Number(e.target.value))}
-                className={`${s.select} flex-1`}
-              >
-                <option value={3}>3 meses</option>
-                <option value={6}>6 meses</option>
-                <option value={12}>1 ano</option>
-                <option value={0}>Sempre (sem limpeza automática)</option>
-              </select>
-              <button
-                onClick={() => saveRetention.mutate()}
-                disabled={saveRetention.isPending}
-                className={s.btnSecondary}
-              >
-                {saveRetention.isPending ? 'Salvando...' : 'Salvar'}
-              </button>
-            </div>
+        <button onClick={() => setShowDeleteModal(true)} className={s.btnSecondary}>
+          🗑️ Limpar histórico
+        </button>
+
+        {cleanupMsg && (
+          <div className={`mt-3 ${cleanupMsg.ok ? s.alertSuccess : s.alertError}`}>
+            {cleanupMsg.text}
           </div>
-
-          <div className="flex flex-wrap gap-2">
-            {deleteConfirm !== 'prev' ? (
-              <button onClick={() => setDeleteConfirm('prev')} className={s.btnSecondary}>
-                Apagar histórico do mês anterior
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className={`text-xs ${s.textSecondary}`}>Confirmar exclusão do mês anterior?</span>
-                <button
-                  onClick={() => deletePrev.mutate()}
-                  disabled={deletePrev.isPending}
-                  className={`${s.btnDanger} text-xs py-1 px-2`}
-                >
-                  Sim, apagar
-                </button>
-                <button onClick={() => setDeleteConfirm(null)} className={`${s.btnSecondary} text-xs py-1 px-2`}>
-                  Cancelar
-                </button>
-              </div>
-            )}
-
-            {deleteConfirm !== 'all' ? (
-              <button onClick={() => setDeleteConfirm('all')} className={s.btnDanger}>
-                Apagar todo o histórico
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className={`text-xs ${s.textSecondary}`}>Confirmar exclusão total?</span>
-                <button
-                  onClick={() => deleteAll.mutate()}
-                  disabled={deleteAll.isPending}
-                  className={`${s.btnDanger} text-xs py-1 px-2`}
-                >
-                  Sim, apagar tudo
-                </button>
-                <button onClick={() => setDeleteConfirm(null)} className={`${s.btnSecondary} text-xs py-1 px-2`}>
-                  Cancelar
-                </button>
-              </div>
-            )}
-          </div>
-
-          {cleanupMsg && (
-            <div className={cleanupMsg.ok ? s.alertSuccess : s.alertError}>
-              {cleanupMsg.text}
-            </div>
-          )}
-        </div>
+        )}
       </section>
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <div className={s.overlay}>
+          <div className={s.modal}>
+            <div className={s.modalHeader}>
+              <h2 className={s.modalTitle}>Apagar todo o histórico?</h2>
+            </div>
+            <div className={s.modalBody}>
+              <p className={`text-sm ${s.textSecondary} leading-relaxed`}>
+                Isso vai apagar todos os registros de verificações anteriores.
+                Os seus links continuam funcionando normalmente — só o histórico
+                de checagens vai ser removido.
+              </p>
+            </div>
+            <div className={s.modalFooter}>
+              <button onClick={() => setShowDeleteModal(false)} className={s.btnSecondary}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteAll.mutate()}
+                disabled={deleteAll.isPending}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {deleteAll.isPending ? 'Apagando...' : 'Sim, apagar tudo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

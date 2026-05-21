@@ -11,17 +11,18 @@ export default function Domains() {
   const [hostname, setHostname] = useState('');
   const [name, setName] = useState('');
   const [createError, setCreateError] = useState('');
+  const [removeError, setRemoveError] = useState('');
 
   const create = useMutation({
     mutationFn: () => createDomain(name || hostname, hostname),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['domains'] }); setShowCreate(false); setHostname(''); setName(''); },
-    onError: (e: any) => setCreateError(e.response?.data?.message || 'Erro ao cadastrar domínio'),
+    onError: (e: any) => setCreateError(e.response?.data?.message || '❌ Não foi possível cadastrar o domínio. Tente de novo.'),
   });
 
   const remove = useMutation({
     mutationFn: (id: number) => deleteDomain(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['domains'] }),
-    onError: (e: any) => alert(e.response?.data?.message || 'Erro ao excluir domínio'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['domains'] }); setRemoveError(''); },
+    onError: (e: any) => setRemoveError(e.response?.data?.message || '❌ Não foi possível remover o domínio. Tente de novo.'),
   });
 
   return (
@@ -35,6 +36,13 @@ export default function Domains() {
           + Novo domínio
         </button>
       </div>
+
+      {removeError && (
+        <div className={`${s.alertError} mb-4 flex items-center justify-between`}>
+          <span>{removeError}</span>
+          <button onClick={() => setRemoveError('')} className="text-xs opacity-60 hover:opacity-100 ml-4">✕</button>
+        </div>
+      )}
 
       <div className={s.tableWrap}>
         <table className="w-full text-sm">
