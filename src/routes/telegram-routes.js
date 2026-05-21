@@ -10,7 +10,7 @@ export default async function telegramRoutes(fastify) {
     if (secret) {
       const headerSecret = request.headers['x-telegram-bot-api-secret-token'];
       if (headerSecret !== secret) {
-        return reply.code(403).send({ error: 'Forbidden' });
+        return reply.code(403).send({ error: 'Acesso negado' });
       }
     }
 

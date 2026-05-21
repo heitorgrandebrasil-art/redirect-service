@@ -9,25 +9,25 @@ export class ClientError extends Error {
 }
 
 export class NotFoundError extends ClientError {
-  constructor(message = 'Resource not found', details = null) {
+  constructor(message = 'Recurso não encontrado', details = null) {
     super(message, 404, 'NOT_FOUND', details);
   }
 }
 
 export class UnauthorizedError extends ClientError {
-  constructor(message = 'Unauthorized', details = null) {
+  constructor(message = 'Não autorizado', details = null) {
     super(message, 401, 'UNAUTHORIZED', details);
   }
 }
 
 export class ConflictError extends ClientError {
-  constructor(message = 'Conflict detected', details = null) {
+  constructor(message = 'Conflito detectado', details = null) {
     super(message, 409, 'CONFLICT', details);
   }
 }
 
 export class ForbiddenError extends ClientError {
-  constructor(message = 'Forbidden', details = null) {
+  constructor(message = 'Acesso negado', details = null) {
     super(message, 403, 'FORBIDDEN', details);
   }
 }

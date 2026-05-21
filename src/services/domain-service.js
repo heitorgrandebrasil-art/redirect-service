@@ -10,7 +10,7 @@ export async function listDomains() {
 export async function getDomain(id) {
   const result = await query('SELECT * FROM domains WHERE id = $1', [id]);
   if (!result.rowCount) {
-    throw new NotFoundError('Domain not found');
+    throw new NotFoundError('Domínio não encontrado');
   }
   return result.rows[0];
 }
@@ -51,7 +51,7 @@ export async function updateDomain(id, payload) {
   );
 
   if (!result.rowCount) {
-    throw new NotFoundError('Domain not found');
+    throw new NotFoundError('Domínio não encontrado');
   }
 
   logAudit('domain.updated', { domainId: id, updates: payload });
@@ -61,7 +61,7 @@ export async function updateDomain(id, payload) {
 export async function deleteDomain(id) {
   const result = await query('DELETE FROM domains WHERE id = $1 RETURNING id', [id]);
   if (!result.rowCount) {
-    throw new NotFoundError('Domain not found');
+    throw new NotFoundError('Domínio não encontrado');
   }
   logAudit('domain.deleted', { domainId: id });
   return { id };

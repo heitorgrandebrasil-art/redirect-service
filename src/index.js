@@ -29,7 +29,29 @@ import { initBrowser, closeBrowser } from './services/browser-pool.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const app = Fastify({ logger, trustProxy: config.app.trustProxy });
+function schemaErrorFormatter(errors) {
+  const msgs = errors.map((err) => {
+    const field = err.instancePath
+      ? err.instancePath.replace(/^\//, '').replace(/\//g, '.')
+      : (err.params?.missingProperty ?? 'campo');
+    switch (err.keyword) {
+      case 'minLength':   return `${field}: mínimo de ${err.params.limit} caractere${err.params.limit === 1 ? '' : 's'}`;
+      case 'maxLength':   return `${field}: máximo de ${err.params.limit} caractere${err.params.limit === 1 ? '' : 's'}`;
+      case 'minimum':     return `${field}: deve ser no mínimo ${err.params.limit}`;
+      case 'maximum':     return `${field}: deve ser no máximo ${err.params.limit}`;
+      case 'required':    return `${err.params.missingProperty}: campo obrigatório`;
+      case 'type':        return `${field}: tipo de dado inválido`;
+      case 'enum':        return `${field}: valor não permitido`;
+      case 'format':      return `${field}: formato inválido`;
+      case 'pattern':     return `${field}: formato inválido`;
+      case 'additionalProperties': return `Propriedade não permitida: ${err.params.additionalProperty}`;
+      default:            return `${field}: valor inválido`;
+    }
+  });
+  return new Error(msgs.join('; '));
+}
+
+const app = Fastify({ logger, trustProxy: config.app.trustProxy, schemaErrorFormatter });
 
 await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(cors, {

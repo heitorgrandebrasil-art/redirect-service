@@ -22,7 +22,7 @@ export default async function healthRoutes(fastify) {
   }, async (request, reply) => {
     const { id } = request.params;
     const result = await checkSingleProduct(Number(id));
-    if (!result) return reply.code(404).send({ status: 'error', message: 'Product not found or no URL' });
+    if (!result) return reply.code(404).send({ status: 'error', message: 'Produto não encontrado ou sem URL de afiliado' });
     return reply.send({ status: 'ok', data: result });
   });
 
@@ -79,7 +79,7 @@ export default async function healthRoutes(fastify) {
     `, [id]);
 
     if (pResult.rowCount === 0) {
-      return reply.code(404).send({ status: 'error', message: 'Product not found' });
+      return reply.code(404).send({ status: 'error', message: 'Produto não encontrado' });
     }
     const p = pResult.rows[0];
 

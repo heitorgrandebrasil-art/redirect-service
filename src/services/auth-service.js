@@ -26,7 +26,7 @@ export async function countUsers() {
 
 export async function createUser({ email, password, role = 'operator' }) {
   const existing = await query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-  if (existing.rowCount) throw new ConflictError('Email already registered');
+  if (existing.rowCount) throw new ConflictError('E-mail já cadastrado');
 
   const passwordHash = await bcrypt.hash(password, 12);
   const result = await query(
@@ -45,7 +45,7 @@ export async function verifyPassword(user, password) {
 
 export async function setupTOTP(userId) {
   const result = await query('SELECT id, email FROM users WHERE id = $1', [userId]);
-  if (!result.rowCount) throw new NotFoundError('User not found');
+  if (!result.rowCount) throw new NotFoundError('Usuário não encontrado');
   const user = result.rows[0];
 
   const secret = new OTPAuth.Secret({ size: 20 });
@@ -72,12 +72,12 @@ export async function setupTOTP(userId) {
 
 export async function enableTOTP(userId, code) {
   const result = await query('SELECT totp_secret FROM users WHERE id = $1', [userId]);
-  if (!result.rowCount) throw new NotFoundError('User not found');
+  if (!result.rowCount) throw new NotFoundError('Usuário não encontrado');
   const { totp_secret } = result.rows[0];
-  if (!totp_secret) throw new ConflictError('TOTP not configured. Call setup first.');
+  if (!totp_secret) throw new ConflictError('2FA não configurado. Configure antes de ativar.');
 
   if (!verifyTOTPToken(totp_secret, code)) {
-    throw new UnauthorizedError('Invalid TOTP code');
+    throw new UnauthorizedError('Código 2FA inválido');
   }
 
   await query('UPDATE users SET totp_enabled = true, updated_at = now() WHERE id = $1', [userId]);
@@ -154,7 +154,7 @@ export async function listUsers() {
 
 export async function deleteUser(id) {
   const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
-  if (!result.rowCount) throw new NotFoundError('User not found');
+  if (!result.rowCount) throw new NotFoundError('Usuário não encontrado');
   logAudit('user.deleted', { userId: id });
   return { id };
 }
@@ -165,18 +165,18 @@ export async function updateUserRole(id, role) {
      RETURNING ${PUBLIC_USER_COLS}`,
     [role, id]
   );
-  if (!result.rowCount) throw new NotFoundError('User not found');
+  if (!result.rowCount) throw new NotFoundError('Usuário não encontrado');
   logAudit('user.role.updated', { userId: id, role });
   return result.rows[0];
 }
 
 export async function changePassword(userId, currentPassword, newPassword) {
   const result = await query('SELECT * FROM users WHERE id = $1', [userId]);
-  if (!result.rowCount) throw new NotFoundError('User not found');
+  if (!result.rowCount) throw new NotFoundError('Usuário não encontrado');
   const user = result.rows[0];
 
   if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
-    throw new UnauthorizedError('Current password is incorrect');
+    throw new UnauthorizedError('Senha atual incorreta');
   }
 
   const hash = await bcrypt.hash(newPassword, 12);

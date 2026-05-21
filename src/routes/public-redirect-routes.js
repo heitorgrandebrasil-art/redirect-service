@@ -18,7 +18,7 @@ function sendMessage(reply, statusCode, title, message, request) {
     .status(statusCode)
     .type('text/html; charset=utf-8')
     .send(`<!doctype html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -77,17 +77,17 @@ export function registerPublicRedirectRoutes(fastify) {
     try {
       shortPath = decodeURIComponent(request.params.short_path || request.params['*'] || '').trim();
     } catch {
-      return sendMessage(reply, 404, 'Redirect not found', 'The redirect link could not be found.', request);
+      return sendMessage(reply, 404, 'Link não encontrado', 'O link de redirecionamento não pôde ser encontrado.', request);
     }
 
     if (!shortPath) {
-      return sendMessage(reply, 404, 'Redirect not found', 'The redirect link could not be found.', request);
+      return sendMessage(reply, 404, 'Link não encontrado', 'O link de redirecionamento não pôde ser encontrado.', request);
     }
 
     const redirect = await redirectService.findRedirectForPublicPath(shortPath);
 
     if (!redirect) {
-      return sendMessage(reply, 404, 'Redirect not found', 'The redirect link could not be found.', request);
+      return sendMessage(reply, 404, 'Link não encontrado', 'O link de redirecionamento não pôde ser encontrado.', request);
     }
 
     if (!redirect.active) {
@@ -96,7 +96,7 @@ export function registerPublicRedirectRoutes(fastify) {
         statusCode: 410
       });
 
-      return sendMessage(reply, 410, 'Redirect disabled', 'This redirect link is currently disabled.', request);
+      return sendMessage(reply, 410, 'Link desativado', 'Este link de redirecionamento está desativado.', request);
     }
 
     redirectService.logRedirectClick(redirect, {

@@ -61,7 +61,7 @@ export async function getVideo(id) {
     [id]
   );
   if (!result.rowCount) {
-    throw new NotFoundError('Video not found');
+    throw new NotFoundError('Campanha não encontrada');
   }
   return result.rows[0];
 }
@@ -101,7 +101,7 @@ export async function updateVideo(id, payload) {
   );
 
   if (!result.rowCount) {
-    throw new NotFoundError('Video not found');
+    throw new NotFoundError('Campanha não encontrada');
   }
 
   logAudit('video.updated', { videoId: id, updates: payload });
@@ -111,7 +111,7 @@ export async function updateVideo(id, payload) {
 export async function deleteVideo(id) {
   const result = await query('DELETE FROM videos WHERE id = $1 RETURNING id', [id]);
   if (!result.rowCount) {
-    throw new NotFoundError('Video not found');
+    throw new NotFoundError('Campanha não encontrada');
   }
   logAudit('video.deleted', { videoId: id });
   return { id };

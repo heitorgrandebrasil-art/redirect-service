@@ -78,7 +78,7 @@ export async function listProducts() {
 export async function getProduct(id) {
   const result = await query('SELECT * FROM products WHERE id = $1', [id]);
   if (!result.rowCount) {
-    throw new NotFoundError('Product not found');
+    throw new NotFoundError('Produto não encontrado');
   }
   return result.rows[0];
 }
@@ -95,7 +95,7 @@ export async function createProduct(payload) {
     [shortPath]
   );
   if (existing.rowCount) {
-    throw new ConflictError('Short path already in use');
+    throw new ConflictError('Caminho curto já está em uso');
   }
 
   const result = await query(
@@ -145,7 +145,7 @@ export async function updateProduct(id, payload) {
       [payload.short_path, id]
     );
     if (conflict.rowCount) {
-      throw new ConflictError('Short path already in use');
+      throw new ConflictError('Caminho curto já está em uso');
     }
   }
 
@@ -163,7 +163,7 @@ export async function replaceAffiliateUrl(productId, newUrl) {
   return await transaction(async (client) => {
     const existing = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [productId]);
     if (!existing.rowCount) {
-      throw new NotFoundError('Product not found');
+      throw new NotFoundError('Produto não encontrado');
     }
 
     const product = existing.rows[0];
@@ -193,7 +193,7 @@ export async function replaceAffiliateUrl(productId, newUrl) {
 export async function deleteProduct(id) {
   const result = await query('DELETE FROM products WHERE id = $1 RETURNING id', [id]);
   if (!result.rowCount) {
-    throw new NotFoundError('Product not found');
+    throw new NotFoundError('Produto não encontrado');
   }
   logAudit('product.deleted', { productId: id });
   return { id };

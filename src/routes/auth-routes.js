@@ -20,7 +20,7 @@ export default async function authRoutes(fastify) {
     const user = await authService.findUserByEmail(email);
 
     if (!user || !(await authService.verifyPassword(user, password))) {
-      return reply.status(401).send({ status: 'error', message: 'Invalid email or password' });
+      return reply.status(401).send({ status: 'error', message: 'E-mail ou senha inválidos' });
     }
 
     if (user.totp_enabled) {
@@ -58,16 +58,16 @@ export default async function authRoutes(fastify) {
     try {
       payload = fastify.jwt.verify(tempToken);
     } catch {
-      return reply.status(401).send({ status: 'error', message: 'Invalid or expired token' });
+      return reply.status(401).send({ status: 'error', message: 'Token inválido ou expirado' });
     }
 
     if (payload.type !== 'temp_2fa') {
-      return reply.status(401).send({ status: 'error', message: 'Invalid token type' });
+      return reply.status(401).send({ status: 'error', message: 'Tipo de token inválido' });
     }
 
     const user = await authService.findUserByEmail(payload.email);
     if (!user) {
-      return reply.status(401).send({ status: 'error', message: 'User not found' });
+      return reply.status(401).send({ status: 'error', message: 'Usuário não encontrado' });
     }
 
     const clean = code.replace(/\s/g, '');
@@ -76,7 +76,7 @@ export default async function authRoutes(fastify) {
       (await authService.verifyBackupCode(user.id, clean));
 
     if (!verified) {
-      return reply.status(401).send({ status: 'error', message: 'Invalid code' });
+      return reply.status(401).send({ status: 'error', message: 'Código inválido' });
     }
 
     const accessToken = fastify.jwt.sign(
@@ -169,7 +169,7 @@ export default async function authRoutes(fastify) {
     preHandler: [authenticateJWT, requireRole('admin')]
   }, async (request, reply) => {
     if (Number(request.params.id) === request.user.id) {
-      return reply.status(400).send({ status: 'error', message: 'Cannot delete your own account' });
+      return reply.status(400).send({ status: 'error', message: 'Não é possível excluir sua própria conta' });
     }
     const result = await authService.deleteUser(request.params.id);
     return reply.send({ status: 'ok', data: result });

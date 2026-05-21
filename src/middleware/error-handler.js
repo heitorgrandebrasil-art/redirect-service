@@ -5,7 +5,7 @@ export function errorHandler(error, request, reply) {
   const statusCode = isClientError(error) ? error.statusCode : 500;
   const payload = {
     status: 'error',
-    message: isClientError(error) ? error.message : 'Internal server error',
+    message: isClientError(error) ? error.message : 'Ocorreu um erro inesperado',
     code: isClientError(error) ? error.code : 'INTERNAL_SERVER_ERROR'
   };
 
