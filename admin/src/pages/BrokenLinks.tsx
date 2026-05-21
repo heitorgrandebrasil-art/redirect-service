@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { getBrokenLinks, snoozeProduct, submitProductFeedback, BrokenLinkItem } from '../lib/api';
+import { getBrokenLinks, snoozeProduct, submitProductFeedback, cleanupBrokenLinks, BrokenLinkItem } from '../lib/api';
 import { s } from '../lib/styles';
 
 const MARKETPLACE_LABELS: Record<string, string> = {
@@ -151,6 +151,18 @@ export default function BrokenLinks() {
   });
 
   const [profileFilter, setProfileFilter] = useState('');
+  const [cleanupMsg, setCleanupMsg] = useState<string | null>(null);
+  const [cleanupConfirm, setCleanupConfirm] = useState(false);
+
+  const cleanupMutation = useMutation({
+    mutationFn: cleanupBrokenLinks,
+    onSuccess: (d) => {
+      setCleanupConfirm(false);
+      setCleanupMsg(`${d.removed} registro(s) inválido(s) removido(s).`);
+      qc.invalidateQueries({ queryKey: ['broken-links'] });
+      setTimeout(() => setCleanupMsg(null), 4000);
+    },
+  });
 
   const snoozeMutation = useMutation({
     mutationFn: snoozeProduct,
@@ -204,6 +216,32 @@ export default function BrokenLinks() {
             <option value="">Todos os perfis</option>
             {profiles.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
+        )}
+      </div>
+
+      {/* Cleanup bar */}
+      <div className="flex items-center gap-3 mb-4">
+        {!cleanupConfirm ? (
+          <button onClick={() => setCleanupConfirm(true)} className={`${s.btnSecondary} text-sm`}>
+            🧹 Limpar registros inválidos
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className={`text-xs ${s.textSecondary}`}>Remover produtos órfãos e do Shopee?</span>
+            <button
+              onClick={() => cleanupMutation.mutate()}
+              disabled={cleanupMutation.isPending}
+              className={`${s.btnDanger} text-xs py-1 px-2`}
+            >
+              {cleanupMutation.isPending ? 'Removendo...' : 'Sim, remover'}
+            </button>
+            <button onClick={() => setCleanupConfirm(false)} className={`${s.btnSecondary} text-xs py-1 px-2`}>
+              Cancelar
+            </button>
+          </div>
+        )}
+        {cleanupMsg && (
+          <span className={`text-sm ${s.textMuted}`}>{cleanupMsg}</span>
         )}
       </div>
 

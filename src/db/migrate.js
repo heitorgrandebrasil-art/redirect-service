@@ -116,6 +116,14 @@ export async function runMigrations() {
   await query(`CREATE INDEX IF NOT EXISTS idx_lch_cycle_month ON link_check_history(cycle_month)`);
 
   // Monthly cycle tracking
+  // Remove orphaned products (video deleted) and Shopee products (marketplace removed)
+  await query(`
+    DELETE FROM products
+    WHERE video_id IS NOT NULL
+      AND video_id NOT IN (SELECT id FROM videos)
+  `);
+  await query(`DELETE FROM products WHERE LOWER(marketplace) = 'shopee'`);
+
   await query(`
     CREATE TABLE IF NOT EXISTS monthly_cycles (
       id               SERIAL PRIMARY KEY,

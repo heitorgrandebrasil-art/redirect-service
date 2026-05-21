@@ -44,6 +44,7 @@ export default async function healthRoutes(fastify) {
       LEFT JOIN profiles pr ON pr.id = v.profile_id
       LEFT JOIN domains d ON d.id = p.domain_id
       WHERE p.link_status IN ('broken', 'human_review')
+        AND v.id IS NOT NULL
       ORDER BY
         CASE p.link_status WHEN 'broken' THEN 0 WHEN 'human_review' THEN 1 END,
         p.link_broken_at DESC NULLS LAST
@@ -184,6 +185,26 @@ export default async function healthRoutes(fastify) {
     );
     logger.info({ event: 'product.snoozed', productId: id, via: 'admin_panel' });
     return reply.send({ status: 'ok' });
+  });
+
+  // Cleanup orphaned/invalid broken-link records — admin only
+  fastify.post('/admin/broken-links/cleanup', {
+    preHandler: [authenticateJWT, requireRole('admin')]
+  }, async (request, reply) => {
+    const orphaned = await query(`
+      DELETE FROM products
+      WHERE video_id IS NOT NULL
+        AND video_id NOT IN (SELECT id FROM videos)
+      RETURNING id
+    `);
+    const shopee = await query(`
+      DELETE FROM products
+      WHERE LOWER(marketplace) = 'shopee'
+      RETURNING id
+    `);
+    const removed = orphaned.rowCount + shopee.rowCount;
+    logger.info({ event: 'broken-links.cleanup', removed, orphaned: orphaned.rowCount, shopee: shopee.rowCount });
+    return reply.send({ status: 'ok', removed });
   });
 
   fastify.get('/config', async () => ({

@@ -135,6 +135,8 @@ export interface BrokenLinkItem {
 }
 export const getBrokenLinks = () =>
   api.get('/broken-links').then((r) => r.data.data as BrokenLinkItem[]);
+export const cleanupBrokenLinks = () =>
+  api.post('/admin/broken-links/cleanup').then((r) => r.data as { status: string; removed: number });
 export const markProductFixed = (id: number) =>
   api.post(`/products/${id}/mark-fixed`).then((r) => r.data);
 export const snoozeProduct = (id: number) =>

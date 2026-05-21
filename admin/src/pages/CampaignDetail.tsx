@@ -166,7 +166,11 @@ export default function CampaignDetail() {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const removeProduct = useMutation({
     mutationFn: (pid: number) => deleteProduct(pid),
-    onSuccess: () => { setRemoveError(null); qc.invalidateQueries({ queryKey: ['video-products', videoId] }); },
+    onSuccess: () => {
+      setRemoveError(null);
+      qc.invalidateQueries({ queryKey: ['video-products', videoId] });
+      qc.invalidateQueries({ queryKey: ['broken-links'] });
+    },
     onError: (e: any) => setRemoveError(e.response?.data?.message || 'Erro ao remover link'),
   });
 
@@ -174,6 +178,7 @@ export default function CampaignDetail() {
     mutationFn: ({ pid, url }: { pid: number; url: string }) => replaceProductLink(pid, url.trim()),
     onSuccess: (_, { pid }) => {
       qc.invalidateQueries({ queryKey: ['video-products', videoId] });
+      qc.invalidateQueries({ queryKey: ['broken-links'] });
       setReplacingId(null);
       setNewUrl('');
       setTimeout(() => checkSingleProduct(pid), 3000);
