@@ -32,7 +32,7 @@ export default async function settingsRoutes(fastify) {
     return reply.send({ status: 'ok', data: updated });
   });
 
-  // Gemini API key — save + test
+  // Gemini API key — save only (no test)
   fastify.post('/settings/gemini-key', {
     schema: {
       body: {
@@ -44,12 +44,8 @@ export default async function settingsRoutes(fastify) {
     }
   }, async (request, reply) => {
     const { api_key } = request.body;
-    const testResult = await testGeminiKey(api_key);
-    if (!testResult.ok) {
-      return reply.send({ status: 'ok', test: { ok: false, error: testResult.error, code: testResult.code } });
-    }
     await settingsService.setSetting('gemini_api_key', api_key, true);
-    return reply.send({ status: 'ok', test: { ok: true } });
+    return reply.send({ status: 'ok' });
   });
 
   // Gemini API key — delete

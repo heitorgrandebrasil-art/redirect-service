@@ -3,6 +3,7 @@ import { getSetting } from './settings-service.js';
 import logger from '../logger.js';
 
 const MODEL = 'gemini-2.0-flash';
+const MODEL_API_VERSION = 'v1beta';
 const PROMPT = `Analise esta captura de tela de uma página de produto de e-commerce. Responda APENAS em JSON com a estrutura exata:
 {"status":"ok","reason":"motivo curto em português","confidence":0.9}
 
@@ -28,7 +29,7 @@ export async function analyzeScreenshot(screenshotPath) {
   try {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: MODEL });
+    const model = genAI.getGenerativeModel({ model: MODEL }, { apiVersion: MODEL_API_VERSION });
 
     const base64 = readFileSync(screenshotPath).toString('base64');
     const result = await model.generateContent([
@@ -61,10 +62,25 @@ export async function testGeminiKey(apiKey) {
   try {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: MODEL });
+    logger.info({ event: 'gemini.test_trying', model: MODEL, apiVersion: MODEL_API_VERSION });
+    const model = genAI.getGenerativeModel({ model: MODEL }, { apiVersion: MODEL_API_VERSION });
     const result = await model.generateContent('Responda com apenas a palavra: OK');
-    return { ok: true, response: result.response.text().trim() };
+    const text = result.response.text().trim();
+    logger.info({ event: 'gemini.test_success', model: MODEL, response: text });
+    return { ok: true, response: text, model: MODEL };
   } catch (err) {
-    return { ok: false, error: err.message, code: err.status ?? null };
+    const code = err.status ?? err.statusCode ?? null;
+    const isFreeTierExhausted = err.message?.includes('free_tier') || (code === 429 && err.message?.includes('limit: 0'));
+    logger.error({
+      event: 'gemini.test_failed',
+      model: MODEL,
+      apiVersion: MODEL_API_VERSION,
+      error_message: err.message,
+      error_status: code,
+      is_free_tier_exhausted: isFreeTierExhausted,
+      error_type: err.constructor?.name ?? typeof err,
+      error_details: err.errorDetails ?? null,
+    });
+    return { ok: false, error: err.message, code, isFreeTierExhausted };
   }
 }

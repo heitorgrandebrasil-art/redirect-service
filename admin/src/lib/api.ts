@@ -180,11 +180,11 @@ export const getSettings = () =>
 export const updateLinkMonitor = (data: { enabled?: boolean; frequency_hours?: number }) =>
   api.patch('/settings/monitor', data).then((r) => r.data.data);
 export const saveGeminiKey = (api_key: string) =>
-  api.post('/settings/gemini-key', { api_key }).then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null } });
+  api.post('/settings/gemini-key', { api_key }).then((r) => r.data as { status: string });
 export const deleteGeminiKey = () =>
   api.delete('/settings/gemini-key').then((r) => r.data);
 export const testCurrentGeminiKey = () =>
-  api.post('/settings/gemini-key/test').then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null } });
+  api.post('/settings/gemini-key/test').then((r) => r.data as { status: string; test: { ok: boolean; error?: string; code?: number | null; isFreeTierExhausted?: boolean } });
 
 export interface VerificationHistory {
   total: number;
