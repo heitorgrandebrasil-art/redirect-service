@@ -136,12 +136,12 @@ function SideNavItem({ item, brokenCount, isAdmin }: { item: NavDef; brokenCount
       end={item.to === '/admin'}
       title={item.label}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+        `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
           isActive
-            ? 'bg-brand-500/[0.12] text-brand-400 dark:text-brand-400'
+            ? 'bg-brand-500/[0.12] text-brand-500 dark:text-brand-400'
             : hasBadge
-              ? 'text-red-400 hover:bg-red-500/[0.08] dark:hover:bg-red-500/[0.08]'
-              : 'text-gray-500 dark:text-gh-muted hover:bg-gray-100 dark:hover:bg-white/[0.05] hover:text-gray-900 dark:hover:text-gh-text'
+              ? 'text-red-500 dark:text-red-400 hover:bg-red-500/[0.08]'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.05] hover:text-gray-900 dark:hover:text-gray-100'
         }`
       }
     >
@@ -233,12 +233,12 @@ export default function Layout() {
         <div className="px-2 lg:px-3 py-3 border-t border-gray-200 dark:border-white/[0.08] space-y-1">
           {/* User avatar + info (desktop only) */}
           <div className="hidden lg:flex items-center gap-2.5 px-2 py-2.5 mb-1 rounded-lg bg-gray-50 dark:bg-gh-over/60">
-            <div className="w-7 h-7 rounded-full bg-brand-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 select-none">
+            <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 select-none">
               {userInitial}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-gray-800 dark:text-gh-text text-xs font-medium truncate">{userDisplayName}</p>
-              <p className="text-gray-500 dark:text-gh-muted text-[10px]">{userRoleLabel}</p>
+              <p className="text-gray-800 dark:text-gray-100 text-sm font-medium truncate">{userDisplayName}</p>
+              <p className="text-gray-500 dark:text-gray-400 text-xs">{userRoleLabel}</p>
             </div>
           </div>
 
@@ -336,7 +336,7 @@ export default function Layout() {
             {item.isBroken && brokenCount > 0 && (
               <span className="absolute top-1 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-badge-pulse" />
             )}
-            <span className="text-[9px] font-medium">{item.short}</span>
+            <span className="text-[10px] font-medium">{item.short}</span>
           </NavLink>
         ))}
       </nav>

@@ -268,7 +268,7 @@ export default function CampaignDetail() {
 
   return (
     <div className={s.page}>
-      <Link to="/admin/campaigns" className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:underline transition-colors mb-4 inline-block">
+      <Link to="/admin/campaigns" className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 mb-4 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gh-card hover:bg-gray-50 dark:hover:bg-white/[0.04] hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
         ← Campanhas
       </Link>
 
@@ -280,17 +280,19 @@ export default function CampaignDetail() {
           <div className="flex items-start justify-between mb-6">
             <div>
               <h1 className={s.h1}>{video.data.title}</h1>
-              <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
                 {video.data.platform && (
-                  <span className="text-sm font-medium bg-gray-100 dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 px-3 py-1 rounded-full">
-                    {video.data.platform}
+                  <span className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1 rounded-full border bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/50 text-red-700 dark:text-red-400">
+                    📹 {video.data.platform}
                   </span>
                 )}
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1 rounded-full border bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-700/50 text-indigo-700 dark:text-indigo-400">
+                  👆 {video.data.total_clicks ?? 0} cliques totais
+                </span>
                 {video.data.original_video_url && (
                   <a href={video.data.original_video_url} target="_blank" rel="noopener noreferrer"
                     className="text-sm text-brand-600 dark:text-brand-400 hover:underline font-medium">Ver vídeo ↗</a>
                 )}
-                <span className="text-sm text-gray-500 dark:text-gray-400">{video.data.total_clicks ?? 0} cliques totais</span>
               </div>
             </div>
             {isAdmin && (
@@ -389,104 +391,101 @@ export default function CampaignDetail() {
                             key={p.id}
                             className={`${s.card} p-4 transition-all ${isFixTarget ? 'ring-2 ring-red-400 dark:ring-red-500' : ''}`}
                           >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                {/* Title row */}
-                                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  <span className={`text-xs font-bold px-2 py-0.5 rounded ${mkt.bg} ${mkt.color} border ${mkt.border}`}>
-                                    {p.position}
-                                  </span>
-                                  <span className={`text-xs font-medium ${s.textPrimary}`}>{p.title}</span>
-                                  <span className={`text-xs ${s.textMuted}`}>{p.click_count ?? 0} cliques</span>
-                                  {checkRes && <CheckResultBadge result={checkRes} />}
-                                </div>
-
-                                {/* Link rows */}
-                                <div className="space-y-1.5">
-                                  {shortUrl && (
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 w-20">Link curto:</span>
-                                      <code className="text-xs bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 px-2 py-0.5 rounded font-mono truncate min-w-0 flex-1">{shortUrl}</code>
-                                      <CopyButton text={shortUrl} />
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 w-20">{shortUrl ? 'Afiliado:' : 'Link:'}</span>
-                                    <a href={p.affiliate_url} target="_blank" rel="noopener noreferrer"
-                                      className="text-xs text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 truncate min-w-0 flex-1 hover:underline">
-                                      {p.affiliate_url}
-                                    </a>
-                                    {!shortUrl && <CopyButton text={p.affiliate_url} />}
-                                  </div>
-                                </div>
-
-                                {/* Status row */}
-                                <div className="flex items-center gap-2 mt-3 flex-wrap">
-                                  <StatusBadge status={p.link_status ?? 'unknown'} code={p.link_last_status_code} />
-                                  {p.link_status === 'human_review' && (
-                                    <>
-                                      <button
-                                        onClick={() => reviewProduct.mutate({ pid: p.id, verdict: 'broken' })}
-                                        disabled={reviewingId === p.id}
-                                        className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                                      >
-                                        {reviewingId === p.id ? '⏳' : '🔴'} Quebrado
-                                      </button>
-                                      <button
-                                        onClick={() => reviewProduct.mutate({ pid: p.id, verdict: 'ok' })}
-                                        disabled={reviewingId === p.id}
-                                        className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                                      >
-                                        {reviewingId === p.id ? '⏳' : '✅'} OK
-                                      </button>
-                                    </>
-                                  )}
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                                    Verificado: <RelativeTime iso={p.link_last_checked_at} />
-                                  </span>
-                                  {p.link_status === 'broken' && p.link_last_status_code && (
-                                    <span className="text-xs font-medium text-red-600 dark:text-red-400">
-                                      {errorDesc(p.link_last_status_code)}
-                                    </span>
-                                  )}
-                                  <button
-                                    onClick={() => monitoringToggle.mutate({ pid: p.id, enabled: !monitoring })}
-                                    title="Quando ativado, o sistema verifica automaticamente se esse link ainda está funcionando."
-                                    className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                                      monitoring
-                                        ? 'text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40'
-                                        : 'text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 hover:text-gray-600 dark:hover:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/40'
-                                    }`}
-                                  >
-                                    {monitoring ? '🔔 Monitor' : '🔕 Monitor'}
-                                  </button>
-                                  <button
-                                    onClick={() => checkSingleProduct(p.id)}
-                                    disabled={checkingIds.has(p.id)}
-                                    title="Verificar este link agora"
-                                    className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    {checkingIds.has(p.id) ? '⏳ Verificando...' : '🔍 Verificar'}
-                                  </button>
-                                </div>
+                            {/* ── Linha 1: título + ações ── */}
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded ${mkt.bg} ${mkt.color} border ${mkt.border} shrink-0`}>
+                                  {p.position}
+                                </span>
+                                <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{p.title}</span>
+                                <span className="text-sm text-gray-500 dark:text-gray-400 shrink-0">{p.click_count ?? 0} cliques</span>
+                                {checkRes && <CheckResultBadge result={checkRes} />}
                               </div>
-
-                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-2 shrink-0">
                                 <button
                                   onClick={() => { setReplacingId(p.id); setNewUrl(p.affiliate_url); setReplaceError(''); }}
-                                  className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-center"
+                                  className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
                                 >
                                   Trocar link
                                 </button>
                                 {isAdmin && (
                                   <button
                                     onClick={() => { if (confirm('Remover este link?')) removeProduct.mutate(p.id); }}
-                                    className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-red-600 dark:text-red-400 border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-center"
+                                    className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-red-600 dark:text-red-400 border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                                   >
                                     Remover
                                   </button>
                                 )}
                               </div>
+                            </div>
+
+                            {/* ── Linha 2: links ── */}
+                            <div className="space-y-1.5 mb-3">
+                              {shortUrl && (
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0 w-24">Link curto:</span>
+                                  <code className="text-sm bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-300 px-2 py-0.5 rounded font-mono truncate min-w-0">{shortUrl}</code>
+                                  <CopyButton text={shortUrl} />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0 w-24">{shortUrl ? 'Afiliado:' : 'Link:'}</span>
+                                <a href={p.affiliate_url} target="_blank" rel="noopener noreferrer"
+                                  className="text-sm text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 truncate min-w-0 hover:underline">
+                                  {p.affiliate_url}
+                                </a>
+                                {!shortUrl && <CopyButton text={p.affiliate_url} />}
+                              </div>
+                            </div>
+
+                            {/* ── Linha 3: status + controles ── */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <StatusBadge status={p.link_status ?? 'unknown'} code={p.link_last_status_code} />
+                              {p.link_status === 'human_review' && (
+                                <>
+                                  <button
+                                    onClick={() => reviewProduct.mutate({ pid: p.id, verdict: 'broken' })}
+                                    disabled={reviewingId === p.id}
+                                    className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {reviewingId === p.id ? '⏳' : '🔴'} Quebrado
+                                  </button>
+                                  <button
+                                    onClick={() => reviewProduct.mutate({ pid: p.id, verdict: 'ok' })}
+                                    disabled={reviewingId === p.id}
+                                    className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {reviewingId === p.id ? '⏳' : '✅'} OK
+                                  </button>
+                                </>
+                              )}
+                              <span className="text-sm text-gray-500 dark:text-gray-400">
+                                Verificado: <RelativeTime iso={p.link_last_checked_at} />
+                              </span>
+                              {p.link_status === 'broken' && p.link_last_status_code && (
+                                <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                                  {errorDesc(p.link_last_status_code)}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => monitoringToggle.mutate({ pid: p.id, enabled: !monitoring })}
+                                title="Quando ativado, o sistema verifica automaticamente se esse link ainda está funcionando."
+                                className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                                  monitoring
+                                    ? 'text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                                    : 'text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 hover:text-gray-600 dark:hover:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+                                }`}
+                              >
+                                {monitoring ? '🔔 Monitor' : '🔕 Monitor'}
+                              </button>
+                              <button
+                                onClick={() => checkSingleProduct(p.id)}
+                                disabled={checkingIds.has(p.id)}
+                                title="Verificar este link agora"
+                                className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {checkingIds.has(p.id) ? '⏳ Verificando...' : '🔍 Verificar'}
+                              </button>
                             </div>
 
                             {/* Replace link inline */}
@@ -544,56 +543,69 @@ export default function CampaignDetail() {
                     const shortUrl = shortUrlFor(p.domain_hostname, p.short_path);
                     return (
                       <div key={p.id} className={`${s.card} p-4`}>
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={s.codeTagBrand}>{p.position}</span>
-                              <span className={`text-sm font-medium ${s.textPrimary}`}>{p.title}</span>
-                              <span className={`text-xs ${s.textMuted}`}>{p.click_count ?? 0} cliques</span>
-                            </div>
-                            <div className="space-y-1.5">
-                              {shortUrl && (
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 w-20">Link curto:</span>
-                                  <code className="text-xs bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 px-2 py-0.5 rounded font-mono truncate min-w-0 flex-1">{shortUrl}</code>
-                                  <CopyButton text={shortUrl} />
-                                </div>
-                              )}
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 w-20">{shortUrl ? 'Afiliado:' : 'Link:'}</span>
-                                <a href={p.affiliate_url} target="_blank" rel="noopener noreferrer"
-                                  className="text-xs text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 truncate min-w-0 flex-1 hover:underline">
-                                  {p.affiliate_url}
-                                </a>
-                                {!shortUrl && <CopyButton text={p.affiliate_url} />}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 mt-2">
-                              <StatusBadge status={p.link_status ?? 'unknown'} code={p.link_last_status_code} />
-                              <span className={`text-xs ${s.textMuted}`}>Verificado: <RelativeTime iso={p.link_last_checked_at} /></span>
-                            </div>
+                        {/* ── Linha 1: título + ações ── */}
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className={s.codeTagBrand}>{p.position}</span>
+                            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{p.title}</span>
+                            <span className="text-sm text-gray-500 dark:text-gray-400 shrink-0">{p.click_count ?? 0} cliques</span>
                           </div>
-                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0">
                             <button
                               onClick={() => { setReplacingId(p.id); setNewUrl(p.affiliate_url); setReplaceError(''); }}
-                              className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-center"
-                            >Trocar link</button>
+                              className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                            >
+                              Trocar link
+                            </button>
                             {isAdmin && (
-                              <button onClick={() => { if (confirm('Remover?')) removeProduct.mutate(p.id); }}
-                                className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-red-600 dark:text-red-400 border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-center">
+                              <button
+                                onClick={() => { if (confirm('Remover?')) removeProduct.mutate(p.id); }}
+                                className="text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors text-red-600 dark:text-red-400 border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                              >
                                 Remover
                               </button>
                             )}
                           </div>
                         </div>
+
+                        {/* ── Linha 2: links ── */}
+                        <div className="space-y-1.5 mb-3">
+                          {shortUrl && (
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0 w-24">Link curto:</span>
+                              <code className="text-sm bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-300 px-2 py-0.5 rounded font-mono truncate min-w-0">{shortUrl}</code>
+                              <CopyButton text={shortUrl} />
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0 w-24">{shortUrl ? 'Afiliado:' : 'Link:'}</span>
+                            <a href={p.affiliate_url} target="_blank" rel="noopener noreferrer"
+                              className="text-sm text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 truncate min-w-0 hover:underline">
+                              {p.affiliate_url}
+                            </a>
+                            {!shortUrl && <CopyButton text={p.affiliate_url} />}
+                          </div>
+                        </div>
+
+                        {/* ── Linha 3: status ── */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <StatusBadge status={p.link_status ?? 'unknown'} code={p.link_last_status_code} />
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            Verificado: <RelativeTime iso={p.link_last_checked_at} />
+                          </span>
+                        </div>
+
+                        {/* Replace link inline */}
                         {replacingId === p.id && (
                           <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                            {replaceError && <p className="text-xs text-red-500 mb-2">{replaceError}</p>}
+                            {replaceError && <p className="text-xs text-red-500 dark:text-red-400 mb-2">{replaceError}</p>}
                             <div className="flex gap-2">
                               <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)} className={s.inputMono} placeholder="https://..." />
-                              <button onClick={() => replaceLink.mutate({ pid: p.id, url: newUrl })}
+                              <button
+                                onClick={() => replaceLink.mutate({ pid: p.id, url: newUrl })}
                                 disabled={replaceLink.isPending || !newUrl}
-                                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Salvar</button>
+                                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                              >Salvar</button>
                               <button onClick={() => setReplacingId(null)} className={s.btnSecondary}>Cancelar</button>
                             </div>
                           </div>
