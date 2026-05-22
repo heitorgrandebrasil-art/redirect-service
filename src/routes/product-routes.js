@@ -1,4 +1,5 @@
 import { authenticateServiceKey } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/authenticate.js';
 import { createProductSchema, updateProductSchema } from '../middleware/validators.js';
 import * as productService from '../services/product-service.js';
 
@@ -15,7 +16,7 @@ export default async function productRoutes(fastify) {
     return reply.send({ status: 'ok', data: product });
   });
 
-  fastify.post('/products', { schema: createProductSchema }, async (request, reply) => {
+  fastify.post('/products', { preHandler: [requireAdmin], schema: createProductSchema }, async (request, reply) => {
     const product = await productService.createProduct(request.body);
     return reply.status(201).send({ status: 'ok', data: product });
   });
@@ -41,7 +42,7 @@ export default async function productRoutes(fastify) {
     return reply.send({ status: 'ok', data: product });
   });
 
-  fastify.delete('/products/:id', async (request, reply) => {
+  fastify.delete('/products/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     const result = await productService.deleteProduct(request.params.id);
     return reply.send({ status: 'ok', data: result });
   });

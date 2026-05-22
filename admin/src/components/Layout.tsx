@@ -109,13 +109,13 @@ interface NavDef {
 
 const NAV: NavDef[] = [
   { to: '/admin',              label: 'Dashboard',       short: 'Home',    Icon: IcGrid },
-  { to: '/admin/profiles',     label: 'Perfis',          short: 'Perfis',  Icon: IcUser },
-  { to: '/admin/domains',      label: 'Domínios',        short: 'Dom.',    Icon: IcGlobe },
+  { to: '/admin/profiles',     label: 'Perfis',          short: 'Perfis',  Icon: IcUser,       adminOnly: true },
+  { to: '/admin/domains',      label: 'Domínios',        short: 'Dom.',    Icon: IcGlobe,      adminOnly: true },
   { to: '/admin/campaigns',    label: 'Campanhas',       short: 'Camp.',   Icon: IcMegaphone },
-  { to: '/admin/broken-links', label: 'Links Quebrados', short: 'Links',   Icon: IcAlert, isBroken: true },
-  { to: '/admin/history',      label: 'Histórico',       short: 'Hist.',   Icon: IcBarChart, adminOnly: true },
-  { to: '/admin/settings',     label: 'Configurações',   short: 'Config',  Icon: IcSettings },
-  { to: '/admin/users',        label: 'Usuários',        short: 'Users',   Icon: IcUsers, adminOnly: true },
+  { to: '/admin/broken-links', label: 'Links Quebrados', short: 'Links',   Icon: IcAlert,      isBroken: true },
+  { to: '/admin/history',      label: 'Histórico',       short: 'Hist.',   Icon: IcBarChart },
+  { to: '/admin/settings',     label: 'Configurações',   short: 'Config',  Icon: IcSettings,   adminOnly: true },
+  { to: '/admin/users',        label: 'Usuários',        short: 'Users',   Icon: IcUsers,      adminOnly: true },
 ];
 
 // Mobile bottom nav — 5 most important items
@@ -166,6 +166,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const [postLoginNotice, setPostLoginNotice] = useState<string | null>(null);
   const [setupComplete, setSetupComplete] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   useEffect(() => {
     const notice = sessionStorage.getItem('post_login_notice');
@@ -178,6 +179,12 @@ export default function Layout() {
       sessionStorage.removeItem('post_setup_complete');
       setSetupComplete(true);
       setTimeout(() => setSetupComplete(false), 8000);
+    }
+    const err = sessionStorage.getItem('notice_error');
+    if (err) {
+      sessionStorage.removeItem('notice_error');
+      setAccessError(err);
+      setTimeout(() => setAccessError(null), 5000);
     }
   }, []);
 
@@ -264,6 +271,18 @@ export default function Layout() {
 
       {/* ── Main content ── */}
       <main className="flex-1 md:ml-16 lg:ml-[220px] pb-14 md:pb-0 min-h-screen">
+        {accessError && (
+          <div className="bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-700 text-red-800 dark:text-red-300 text-sm px-4 py-3 flex items-center justify-between">
+            <span>🚫 {accessError}</span>
+            <button
+              onClick={() => setAccessError(null)}
+              className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-100 ml-4 font-bold leading-none"
+              aria-label="Fechar aviso"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {setupComplete && (
           <div className="bg-green-50 dark:bg-green-900/20 border-b border-green-200 dark:border-green-700 text-green-800 dark:text-green-300 text-sm px-4 py-3 flex items-center justify-between">
             <span>

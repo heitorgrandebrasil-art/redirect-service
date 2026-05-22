@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
 import { listVideos, createVideo, deleteVideo, listProfiles, type VideoPayload } from '../lib/api';
 import { s } from '../lib/styles';
 
@@ -23,6 +24,7 @@ function IcSort({ active, dir }: { active: boolean; dir: 'asc' | 'desc' }) {
 }
 
 export default function Campaigns() {
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const videos = useQuery({ queryKey: ['videos'], queryFn: listVideos });
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles });
@@ -74,7 +76,7 @@ export default function Campaigns() {
           <h1 className={s.h1}>Campanhas</h1>
           <p className={s.sub}>Vídeos e links afiliados</p>
         </div>
-        <button onClick={openCreate} className={s.btnPrimary}>+ Nova campanha</button>
+        {isAdmin && <button onClick={openCreate} className={s.btnPrimary}>+ Nova campanha</button>}
       </div>
 
       {/* Filters */}
@@ -203,12 +205,14 @@ export default function Campaigns() {
                       >
                         Ver links
                       </Link>
-                      <button
-                        onClick={() => { if (confirm('Excluir esta campanha?')) remove.mutate(v.id); }}
-                        className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500/10 transition-colors"
-                      >
-                        Excluir
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => { if (confirm('Excluir esta campanha?')) remove.mutate(v.id); }}
+                          className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500/10 transition-colors"
+                        >
+                          Excluir
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

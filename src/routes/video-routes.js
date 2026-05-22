@@ -1,4 +1,5 @@
 import { authenticateServiceKey } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/authenticate.js';
 import { createVideoSchema, updateVideoSchema, createProductSchema } from '../middleware/validators.js';
 import * as videoService from '../services/video-service.js';
 import { checkLinksForVideo } from '../services/link-health.js';
@@ -16,7 +17,7 @@ export default async function videoRoutes(fastify) {
     return reply.send({ status: 'ok', data: video });
   });
 
-  fastify.post('/videos', { schema: createVideoSchema }, async (request, reply) => {
+  fastify.post('/videos', { preHandler: [requireAdmin], schema: createVideoSchema }, async (request, reply) => {
     const video = await videoService.createVideo(request.body);
     return reply.status(201).send({ status: 'ok', data: video });
   });
@@ -26,7 +27,7 @@ export default async function videoRoutes(fastify) {
     return reply.send({ status: 'ok', data: video });
   });
 
-  fastify.delete('/videos/:id', async (request, reply) => {
+  fastify.delete('/videos/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     const result = await videoService.deleteVideo(request.params.id);
     return reply.send({ status: 'ok', data: result });
   });
@@ -36,7 +37,7 @@ export default async function videoRoutes(fastify) {
     return reply.send({ status: 'ok', data: products });
   });
 
-  fastify.post('/videos/:id/products', { schema: createProductSchema }, async (request, reply) => {
+  fastify.post('/videos/:id/products', { preHandler: [requireAdmin], schema: createProductSchema }, async (request, reply) => {
     const product = await videoService.createProductForVideo(request.params.id, request.body);
     return reply.status(201).send({ status: 'ok', data: product });
   });

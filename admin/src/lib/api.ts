@@ -52,8 +52,10 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
 
 // Users (admin only)
 export const listUsers = () => api.get('/users').then((r) => r.data.data);
-export const createUser = (data: { email: string; password: string; role: string }) =>
+export const createUser = (data: { name: string; email: string; password: string; role: string }) =>
   api.post('/users', data).then((r) => r.data.data);
+export const updateUser = (id: number, data: { name?: string; email?: string; password?: string; role?: string }) =>
+  api.patch(`/users/${id}`, data).then((r) => r.data.data);
 export const deleteUser = (id: number) =>
   api.delete(`/users/${id}`).then((r) => r.data.data);
 export const updateUserRole = (id: number, role: string) =>

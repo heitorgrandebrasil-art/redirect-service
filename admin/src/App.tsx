@@ -17,8 +17,8 @@ import Users from './pages/Users';
 import BrokenLinks from './pages/BrokenLinks';
 import History from './pages/History';
 
-function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
-  const { token, isAdmin } = useAuth();
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { token } = useAuth();
 
   const { data: setupStatus, isLoading: setupLoading } = useQuery({
     queryKey: ['setup-status'],
@@ -33,7 +33,16 @@ function ProtectedRoute({ children, adminOnly = false }: { children: React.React
     if (setupStatus?.needsSetup) return <Navigate to="/admin/setup" replace />;
     return <Navigate to="/admin/login" replace />;
   }
-  if (adminOnly && !isAdmin) return <Navigate to="/admin" replace />;
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { token, isAdmin } = useAuth();
+  if (!token) return <Navigate to="/admin/login" replace />;
+  if (!isAdmin) {
+    sessionStorage.setItem('notice_error', 'Você não tem permissão para acessar esta página.');
+    return <Navigate to="/admin" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -50,23 +59,15 @@ function AppRoutes() {
         </ProtectedRoute>
       }>
         <Route index element={<Dashboard />} />
-        <Route path="profiles" element={<Profiles />} />
-        <Route path="domains" element={<Domains />} />
+        <Route path="profiles" element={<AdminRoute><Profiles /></AdminRoute>} />
+        <Route path="domains" element={<AdminRoute><Domains /></AdminRoute>} />
         <Route path="campaigns" element={<Campaigns />} />
         <Route path="campaigns/:id" element={<CampaignDetail />} />
         <Route path="broken-links" element={<BrokenLinks />} />
-        <Route path="history" element={
-          <ProtectedRoute adminOnly>
-            <History />
-          </ProtectedRoute>
-        } />
-        <Route path="settings" element={<Settings />} />
+        <Route path="history" element={<History />} />
+        <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
         <Route path="setup-2fa" element={<Setup2FA />} />
-        <Route path="users" element={
-          <ProtectedRoute adminOnly>
-            <Users />
-          </ProtectedRoute>
-        } />
+        <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/admin" replace />} />
     </Routes>

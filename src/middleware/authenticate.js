@@ -22,3 +22,10 @@ export function requireRole(...roles) {
     }
   };
 }
+
+export function requireAdmin(request) {
+  if (request.user?.type === 'service') return; // chave interna, acesso irrestrito
+  if (request.user?.role !== 'admin') {
+    throw new ForbiddenError('Você não tem permissão para realizar esta ação.');
+  }
+}

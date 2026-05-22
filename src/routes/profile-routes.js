@@ -1,4 +1,4 @@
-import { authenticateJWT } from '../middleware/authenticate.js';
+import { authenticateJWT, requireAdmin } from '../middleware/authenticate.js';
 import * as profileService from '../services/profile-service.js';
 import { sendTelegramMessage } from '../services/telegram-service.js';
 
@@ -18,6 +18,7 @@ export default async function profileRoutes(fastify) {
   });
 
   fastify.post('/profiles', {
+    preHandler: [requireAdmin],
     schema: {
       body: {
         type: 'object',
@@ -38,6 +39,7 @@ export default async function profileRoutes(fastify) {
   });
 
   fastify.patch('/profiles/:id', {
+    preHandler: [requireAdmin],
     schema: {
       body: {
         type: 'object',
@@ -56,12 +58,12 @@ export default async function profileRoutes(fastify) {
     return reply.send({ status: 'ok', data: profile });
   });
 
-  fastify.delete('/profiles/:id', async (request, reply) => {
+  fastify.delete('/profiles/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     const result = await profileService.deleteProfile(request.params.id);
     return reply.send({ status: 'ok', data: result });
   });
 
-  fastify.post('/profiles/:id/test-telegram', async (request, reply) => {
+  fastify.post('/profiles/:id/test-telegram', { preHandler: [requireAdmin] }, async (request, reply) => {
     const profile = await profileService.getProfile(request.params.id);
 
     if (!profile.telegram_bot_token || !profile.telegram_chat_id) {

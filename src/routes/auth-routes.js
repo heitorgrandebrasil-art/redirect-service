@@ -206,9 +206,10 @@ export default async function authRoutes(fastify) {
         type: 'object',
         required: ['email', 'password'],
         properties: {
-          email: { type: 'string' },
+          name:     { type: 'string', minLength: 2 },
+          email:    { type: 'string' },
           password: { type: 'string', minLength: 8 },
-          role: { type: 'string', enum: ['admin', 'operator'] }
+          role:     { type: 'string', enum: ['admin', 'operator'] }
         },
         additionalProperties: false
       }
@@ -216,6 +217,25 @@ export default async function authRoutes(fastify) {
   }, async (request, reply) => {
     const user = await authService.createUser(request.body);
     return reply.status(201).send({ status: 'ok', data: user });
+  });
+
+  fastify.patch('/users/:id', {
+    preHandler: [authenticateJWT, requireRole('admin')],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          name:     { type: 'string', minLength: 2 },
+          email:    { type: 'string' },
+          password: { type: 'string', minLength: 8 },
+          role:     { type: 'string', enum: ['admin', 'operator'] }
+        },
+        additionalProperties: false
+      }
+    }
+  }, async (request, reply) => {
+    const user = await authService.updateUser(request.params.id, request.body);
+    return reply.send({ status: 'ok', data: user });
   });
 
   fastify.delete('/users/:id', {

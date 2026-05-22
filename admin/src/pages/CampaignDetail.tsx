@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 import {
   getVideo, listVideoProducts, createVideoProduct, deleteProduct, replaceProductLink,
   markProductFixed, toggleProductMonitoring, listDomains, getConfig, checkVideoLinks,
@@ -106,6 +107,7 @@ function sanitizeUri(raw: string): string {
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function CampaignDetail() {
+  const { isAdmin } = useAuth();
   const { id } = useParams<{ id: string }>();
   const videoId = Number(id);
   const qc = useQueryClient();
@@ -277,13 +279,15 @@ export default function CampaignDetail() {
                 <span className={`text-xs ${s.textMuted}`}>{video.data.total_clicks ?? 0} cliques totais</span>
               </div>
             </div>
-            <button
-              onClick={() => { setCheckResult(null); checkLinks.mutate(); }}
-              disabled={checkLinks.isPending}
-              className={`${s.btnSecondary} shrink-0`}
-            >
-              {checkLinks.isPending ? 'Verificando...' : '🔍 Verificar links'}
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => { setCheckResult(null); checkLinks.mutate(); }}
+                disabled={checkLinks.isPending}
+                className={`${s.btnSecondary} shrink-0`}
+              >
+                {checkLinks.isPending ? 'Verificando...' : '🔍 Verificar links'}
+              </button>
+            )}
           </div>
 
           {/* Fix mode banner */}
@@ -341,18 +345,22 @@ export default function CampaignDetail() {
                     <h2 className={`font-semibold text-sm ${mkt.color}`}>
                       {mkt.label} <span className={`${s.textMuted} font-normal`}>({items.length})</span>
                     </h2>
-                    <button onClick={() => openAdd(mkt.key as MarketplaceKey)} className={s.btnPrimary}>
-                      + Adicionar
-                    </button>
+                    {isAdmin && (
+                      <button onClick={() => openAdd(mkt.key as MarketplaceKey)} className={s.btnPrimary}>
+                        + Adicionar
+                      </button>
+                    )}
                   </div>
 
                   {items.length === 0 ? (
                     <div className={`${s.card} border-dashed p-6 text-center`}>
                       <p className={`${s.textMuted} text-sm`}>Nenhum link de {mkt.label} adicionado.</p>
-                      <button onClick={() => openAdd(mkt.key as MarketplaceKey)}
-                        className={`mt-2 text-sm ${mkt.color} hover:underline font-medium`}>
-                        + Adicionar primeiro link
-                      </button>
+                      {isAdmin && (
+                        <button onClick={() => openAdd(mkt.key as MarketplaceKey)}
+                          className={`mt-2 text-sm ${mkt.color} hover:underline font-medium`}>
+                          + Adicionar primeiro link
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -456,12 +464,14 @@ export default function CampaignDetail() {
                                 >
                                   Trocar link
                                 </button>
-                                <button
-                                  onClick={() => { if (confirm('Remover este link?')) removeProduct.mutate(p.id); }}
-                                  className={s.btnDanger}
-                                >
-                                  Remover
-                                </button>
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => { if (confirm('Remover este link?')) removeProduct.mutate(p.id); }}
+                                    className={s.btnDanger}
+                                  >
+                                    Remover
+                                  </button>
+                                )}
                               </div>
                             </div>
 
@@ -554,9 +564,11 @@ export default function CampaignDetail() {
                               onClick={() => { setReplacingId(p.id); setNewUrl(p.affiliate_url); setReplaceError(''); }}
                               className="text-xs text-amber-600 dark:text-amber-400 px-2 py-1 border border-amber-200 dark:border-amber-700 rounded hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
                             >Trocar link</button>
-                            <button onClick={() => { if (confirm('Remover?')) removeProduct.mutate(p.id); }} className={s.btnDanger}>
-                              Remover
-                            </button>
+                            {isAdmin && (
+                              <button onClick={() => { if (confirm('Remover?')) removeProduct.mutate(p.id); }} className={s.btnDanger}>
+                                Remover
+                              </button>
+                            )}
                           </div>
                         </div>
                         {replacingId === p.id && (

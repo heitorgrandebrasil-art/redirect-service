@@ -170,6 +170,30 @@ export async function updateUserRole(id, role) {
   return result.rows[0];
 }
 
+export async function updateUser(id, { name, email, password, role }) {
+  const sets = [];
+  const values = [];
+  let idx = 1;
+
+  if (name !== undefined)  { sets.push(`name = $${idx++}`);          values.push(name?.trim() || null); }
+  if (email !== undefined) { sets.push(`email = $${idx++}`);         values.push(email.toLowerCase().trim()); }
+  if (password)            { const hash = await bcrypt.hash(password, 12);
+                             sets.push(`password_hash = $${idx++}`); values.push(hash); }
+  if (role !== undefined)  { sets.push(`role = $${idx++}`);          values.push(role); }
+
+  if (sets.length === 0) throw new Error('Nenhum campo para atualizar');
+  sets.push('updated_at = now()');
+  values.push(id);
+
+  const result = await query(
+    `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} RETURNING ${PUBLIC_USER_COLS}`,
+    values
+  );
+  if (!result.rowCount) throw new NotFoundError('Usuário não encontrado');
+  logAudit('user.updated', { userId: id });
+  return result.rows[0];
+}
+
 export async function changePassword(userId, currentPassword, newPassword) {
   const result = await query('SELECT * FROM users WHERE id = $1', [userId]);
   if (!result.rowCount) throw new NotFoundError('Usuário não encontrado');
