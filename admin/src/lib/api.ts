@@ -60,6 +60,8 @@ export const deleteUser = (id: number) =>
   api.delete(`/users/${id}`).then((r) => r.data.data);
 export const updateUserRole = (id: number, role: string) =>
   api.patch(`/users/${id}/role`, { role }).then((r) => r.data.data);
+export const resetUser2FA = (id: number) =>
+  api.patch(`/users/${id}/reset-2fa`).then((r) => r.data);
 
 // Profiles
 export const listProfiles = () => api.get('/profiles').then((r) => r.data.data);

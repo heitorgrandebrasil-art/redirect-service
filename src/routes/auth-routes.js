@@ -262,4 +262,15 @@ export default async function authRoutes(fastify) {
     const user = await authService.updateUserRole(request.params.id, request.body.role);
     return reply.send({ status: 'ok', data: user });
   });
+
+  fastify.patch('/users/:id/reset-2fa', {
+    preHandler: [authenticateJWT, requireRole('admin')],
+  }, async (request, reply) => {
+    const targetId = Number(request.params.id);
+    if (targetId === request.user.id) {
+      return reply.status(400).send({ status: 'error', message: 'Use a página Minha Conta para alterar seu próprio 2FA.' });
+    }
+    await authService.disableTOTP(targetId);
+    return reply.send({ status: 'ok' });
+  });
 }

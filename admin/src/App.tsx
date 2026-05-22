@@ -13,6 +13,7 @@ import Domains from './pages/Domains';
 import Campaigns from './pages/Campaigns';
 import CampaignDetail from './pages/CampaignDetail';
 import Settings from './pages/Settings';
+import MyAccount from './pages/MyAccount';
 import Users from './pages/Users';
 import BrokenLinks from './pages/BrokenLinks';
 import History from './pages/History';
@@ -66,6 +67,7 @@ function AppRoutes() {
         <Route path="broken-links" element={<BrokenLinks />} />
         <Route path="history" element={<History />} />
         <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
+        <Route path="account" element={<MyAccount />} />
         <Route path="setup-2fa" element={<Setup2FA />} />
         <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
       </Route>

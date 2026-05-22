@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
-import { listUsers, createUser, updateUser, deleteUser } from '../lib/api';
+import { listUsers, createUser, updateUser, deleteUser, resetUser2FA } from '../lib/api';
 import { s } from '../lib/styles';
 
 export default function Users() {
@@ -69,6 +69,20 @@ export default function Users() {
     if (ePw && ePw.length < 8) { setEError('A nova senha deve ter pelo menos 8 caracteres.'); return; }
     edit.mutate();
   }
+
+  // ── Reset 2FA ─────────────────────────────────────────────────────────────────
+  const [resetTarget, setResetTarget] = useState<any>(null);
+  const [resetError, setResetError]   = useState('');
+
+  const reset2fa = useMutation({
+    mutationFn: (id: number) => resetUser2FA(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      setResetTarget(null);
+      setResetError('');
+    },
+    onError: (e: any) => setResetError(e.response?.data?.message || '❌ Não foi possível resetar o 2FA. Tente de novo.'),
+  });
 
   // ── Delete ────────────────────────────────────────────────────────────────────
   const remove = useMutation({
@@ -299,6 +313,28 @@ export default function Users() {
                   <option value="admin">Administrador</option>
                 </select>
               </div>
+
+              {/* 2FA status + reset */}
+              <div className="pt-2 border-t border-gray-100 dark:border-white/[0.08]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-sm font-medium ${s.textPrimary}`}>Autenticação de dois fatores</p>
+                    <p className={`text-xs mt-0.5 ${editTarget?.totp_enabled ? 'text-green-600 dark:text-green-400' : s.textMuted}`}>
+                      {editTarget?.totp_enabled ? '✓ 2FA ativo' : '— Não configurado'}
+                    </p>
+                  </div>
+                  {editTarget?.totp_enabled && (
+                    <button
+                      type="button"
+                      onClick={() => { setResetTarget(editTarget); setResetError(''); closeEdit(); }}
+                      className={s.btnDanger}
+                    >
+                      Resetar 2FA
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={closeEdit} className={s.btnSecondary}>
                   Cancelar
@@ -312,6 +348,39 @@ export default function Users() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ── Modal: Confirmar reset 2FA ─────────────────────────────────────────── */}
+      {resetTarget && (
+        <div className={s.overlay}>
+          <div className={s.modal}>
+            <div className={s.modalHeader}>
+              <h2 className={s.modalTitle}>Resetar 2FA de {resetTarget.name || resetTarget.email}?</h2>
+            </div>
+            <div className={s.modalBody}>
+              <p className={`text-sm ${s.textSecondary}`}>
+                O 2FA será removido desta conta. O usuário poderá entrar apenas com e-mail e senha e precisará
+                configurar o 2FA novamente em <strong>Minha Conta</strong>.
+              </p>
+              {resetError && <div className={s.alertError}>{resetError}</div>}
+            </div>
+            <div className={s.modalFooter}>
+              <button
+                onClick={() => { setResetTarget(null); setResetError(''); }}
+                className={s.btnSecondary}
+                disabled={reset2fa.isPending}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => reset2fa.mutate(resetTarget.id)}
+                disabled={reset2fa.isPending}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {reset2fa.isPending ? 'Resetando...' : 'Confirmar reset'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -95,6 +95,14 @@ function IcLogOut() {
     </svg>
   );
 }
+function IcLock() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
 
 // ── Nav definition ────────────────────────────────────────────────────────────
 
@@ -116,12 +124,8 @@ const NAV: NavDef[] = [
   { to: '/admin/history',      label: 'Histórico',       short: 'Hist.',   Icon: IcBarChart },
   { to: '/admin/settings',     label: 'Configurações',   short: 'Config',  Icon: IcSettings,   adminOnly: true },
   { to: '/admin/users',        label: 'Usuários',        short: 'Users',   Icon: IcUsers,      adminOnly: true },
+  { to: '/admin/account',      label: 'Minha Conta',     short: 'Conta',   Icon: IcLock },
 ];
-
-// Mobile bottom nav — 5 most important items
-const MOBILE_NAV = NAV.filter((n) =>
-  ['/admin', '/admin/profiles', '/admin/campaigns', '/admin/broken-links', '/admin/settings'].includes(n.to),
-);
 
 // ── Sidebar NavItem ───────────────────────────────────────────────────────────
 
@@ -159,6 +163,13 @@ function SideNavItem({ item, brokenCount, isAdmin }: { item: NavDef; brokenCount
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
+
+const ADMIN_MOBILE_NAV = NAV.filter((n) =>
+  ['/admin', '/admin/profiles', '/admin/campaigns', '/admin/broken-links', '/admin/settings'].includes(n.to),
+);
+const OPERATOR_MOBILE_NAV = NAV.filter((n) =>
+  ['/admin', '/admin/campaigns', '/admin/broken-links', '/admin/history', '/admin/account'].includes(n.to),
+);
 
 export default function Layout() {
   const { user, clearAuth, isAdmin } = useAuth();
@@ -287,7 +298,7 @@ export default function Layout() {
           <div className="bg-green-50 dark:bg-green-900/20 border-b border-green-200 dark:border-green-700 text-green-800 dark:text-green-300 text-sm px-4 py-3 flex items-center justify-between">
             <span>
               Conta criada com sucesso! Recomendamos ativar a autenticação de dois fatores.{' '}
-              <Link to="/admin/settings" className="font-semibold underline underline-offset-2 hover:opacity-80">
+              <Link to="/admin/account" className="font-semibold underline underline-offset-2 hover:opacity-80">
                 Ativar agora
               </Link>
             </span>
@@ -317,7 +328,7 @@ export default function Layout() {
 
       {/* ── Mobile bottom nav ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 flex items-center justify-around bg-white dark:bg-gh-nav border-t border-gray-200 dark:border-white/[0.08] z-30 px-1">
-        {MOBILE_NAV.map((item) => (
+        {(isAdmin ? ADMIN_MOBILE_NAV : OPERATOR_MOBILE_NAV).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
