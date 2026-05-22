@@ -24,6 +24,13 @@ api.interceptors.response.use(
   }
 );
 
+// Setup inicial (sem auth)
+export const getSetupStatus = () =>
+  api.get('/auth/setup-status').then((r) => r.data as { needsSetup: boolean });
+
+export const setupFirstAdmin = (data: { name: string; email: string; password: string }) =>
+  api.post('/auth/setup', data).then((r) => r.data as { status: string; accessToken: string; user: any });
+
 // Auth
 export const login = (email: string, password: string) =>
   api.post('/auth/login', { email, password }).then((r) => r.data);

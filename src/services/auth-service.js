@@ -7,7 +7,7 @@ import { NotFoundError, UnauthorizedError, ConflictError } from '../errors.js';
 import { logAudit } from '../audit.js';
 import config from '../config.js';
 
-const PUBLIC_USER_COLS = 'id, email, role, totp_enabled, created_at, updated_at';
+const PUBLIC_USER_COLS = 'id, name, email, role, totp_enabled, created_at, updated_at';
 
 export async function findUserById(id) {
   const result = await query(`SELECT ${PUBLIC_USER_COLS} FROM users WHERE id = $1`, [id]);
@@ -24,16 +24,16 @@ export async function countUsers() {
   return result.rows[0].total;
 }
 
-export async function createUser({ email, password, role = 'operator' }) {
+export async function createUser({ name, email, password, role = 'operator' }) {
   const existing = await query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
   if (existing.rowCount) throw new ConflictError('E-mail já cadastrado');
 
   const passwordHash = await bcrypt.hash(password, 12);
   const result = await query(
-    `INSERT INTO users (email, password_hash, role)
-     VALUES ($1, $2, $3)
+    `INSERT INTO users (name, email, password_hash, role)
+     VALUES ($1, $2, $3, $4)
      RETURNING ${PUBLIC_USER_COLS}`,
-    [email.toLowerCase().trim(), passwordHash, role]
+    [name?.trim() || null, email.toLowerCase().trim(), passwordHash, role]
   );
   logAudit('user.created', { userId: result.rows[0].id, email, role });
   return result.rows[0];

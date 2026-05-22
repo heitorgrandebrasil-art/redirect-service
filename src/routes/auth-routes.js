@@ -3,6 +3,43 @@ import * as authService from '../services/auth-service.js';
 import { authenticateJWT, requireRole } from '../middleware/authenticate.js';
 
 export default async function authRoutes(fastify) {
+
+  // ── Setup inicial (sem autenticação) ─────────────────────────────────────────
+
+  fastify.get('/auth/setup-status', async (request, reply) => {
+    const total = await authService.countUsers();
+    return reply.send({ needsSetup: total === 0 });
+  });
+
+  fastify.post('/auth/setup', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['name', 'email', 'password'],
+        properties: {
+          name:     { type: 'string', minLength: 2 },
+          email:    { type: 'string' },
+          password: { type: 'string', minLength: 8 }
+        },
+        additionalProperties: false
+      }
+    }
+  }, async (request, reply) => {
+    const total = await authService.countUsers();
+    if (total > 0) {
+      return reply.status(403).send({ status: 'error', message: 'Sistema já configurado' });
+    }
+    const { name, email, password } = request.body;
+    const user = await authService.createUser({ name, email, password, role: 'admin' });
+    const accessToken = fastify.jwt.sign(
+      { sub: user.id, email: user.email, role: user.role, type: 'access' },
+      { expiresIn: config.jwt.accessTokenExpiry }
+    );
+    return reply.status(201).send({ status: 'ok', accessToken, user });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   fastify.post('/auth/login', {
     schema: {
       body: {

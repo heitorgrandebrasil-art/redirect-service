@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 
 interface User {
   id: number;
+  name?: string | null;
   email: string;
   role: 'admin' | 'operator';
   totp_enabled: boolean;

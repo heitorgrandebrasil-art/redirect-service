@@ -4,9 +4,49 @@ import { useAuth } from '../lib/auth';
 import {
   setupTotp, enableTotp, disableTotp, regenerateBackupCodes, changePassword,
   checkLinks, getSettings, updateLinkMonitor,
-  saveGeminiKey, deleteGeminiKey, testCurrentGeminiKey, LinkCheckItem,
+  saveGeminiKey, deleteGeminiKey, testCurrentGeminiKey, getHistoryStats, LinkCheckItem,
 } from '../lib/api';
 import { s } from '../lib/styles';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'agora mesmo';
+  if (mins < 60) return `há ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `há ${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  return `há ${days} dia${days !== 1 ? 's' : ''}`;
+}
+
+// ── Animated status dot ───────────────────────────────────────────────────────
+
+function StatusDot({ status }: { status: 'ok' | 'error' | 'untested' | 'testing' }) {
+  if (status === 'ok') {
+    return (
+      <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
+        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+      </span>
+    );
+  }
+  if (status === 'testing') {
+    return (
+      <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-60" />
+        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-500" />
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return <span className="inline-flex rounded-full h-2.5 w-2.5 bg-red-500 flex-shrink-0" />;
+  }
+  return <span className="inline-flex rounded-full h-2.5 w-2.5 bg-amber-400 flex-shrink-0" />;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Settings() {
   const { user, setAuth } = useAuth();
@@ -31,18 +71,15 @@ export default function Settings() {
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [totpError, setTotpError] = useState('');
 
-  // Estado da exibição dos códigos de backup
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [codesCopied, setCodesCopied] = useState(false);
   const [codesDownloaded, setCodesDownloaded] = useState(false);
   const [copyAllMsg, setCopyAllMsg] = useState(false);
 
-  // Modal de desativar 2FA
   const [disableModal, setDisableModal] = useState(false);
   const [disablePw, setDisablePw] = useState('');
   const [disableError, setDisableError] = useState('');
 
-  // Resetar estados ao entrar na etapa de exibição dos códigos
   useEffect(() => {
     if (totpStep === 'codes') {
       setCopiedIndex(null);
@@ -103,7 +140,6 @@ export default function Settings() {
     }
   });
 
-  // — Funções utilitárias para códigos de backup —
   function copyCode(code: string, index: number) {
     navigator.clipboard.writeText(code).catch(() => {});
     setCopiedIndex(index);
@@ -145,7 +181,10 @@ export default function Settings() {
   });
 
   // — Monitor de links —
-  const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings, enabled: user?.role === 'admin' });
+  const isAdmin = user?.role === 'admin';
+  const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings, enabled: isAdmin });
+  const historyStatsQ = useQuery({ queryKey: ['historyStats'], queryFn: getHistoryStats, enabled: isAdmin });
+
   const [monitorEnabled, setMonitorEnabled] = useState(false);
   const [monitorFreq, setMonitorFreq]       = useState(24);
   const [monitorSaved, setMonitorSaved]     = useState(false);
@@ -171,6 +210,7 @@ export default function Settings() {
 
   // — Gemini —
   const [geminiKey, setGeminiKey] = useState('');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [geminiSaveStatus, setGeminiSaveStatus] = useState<'idle' | { ok: boolean; message: string }>('idle');
   const [geminiTestStatus, setGeminiTestStatus] = useState<'idle' | 'testing' | { ok: boolean; message: string }>('idle');
   const [geminiDeleteConfirm, setGeminiDeleteConfirm] = useState(false);
@@ -179,7 +219,7 @@ export default function Settings() {
     mutationFn: () => saveGeminiKey(geminiKey),
     onSuccess: () => {
       setGeminiKey('');
-      setGeminiSaveStatus({ ok: true, message: '✅ Pronto! Chave do Gemini salva.' });
+      setGeminiSaveStatus({ ok: true, message: '✅ Chave salva com sucesso!' });
       setGeminiTestStatus('idle');
       settingsQ.refetch();
       setTimeout(() => setGeminiSaveStatus('idle'), 4000);
@@ -202,13 +242,13 @@ export default function Settings() {
     onMutate: () => setGeminiTestStatus('testing'),
     onSuccess: (data) => {
       if (data.test.ok) {
-        setGeminiTestStatus({ ok: true, message: 'Conexão bem-sucedida! Gemini está funcionando.' });
+        setGeminiTestStatus({ ok: true, message: '✅ Gemini conectado e funcionando!' });
         settingsQ.refetch();
       } else {
         setGeminiTestStatus({ ok: false, message: geminiErrorMessage(data.test.error, data.test.code, data.test.isFreeTierExhausted) });
       }
     },
-    onError: () => setGeminiTestStatus({ ok: false, message: '❌ Não foi possível testar a chave. Tente de novo.' }),
+    onError: () => setGeminiTestStatus({ ok: false, message: '❌ Não foi possível conectar. Verifique a chave.' }),
   });
 
   function geminiErrorMessage(error?: string, code?: number | null, isFreeTierExhausted?: boolean): string {
@@ -220,7 +260,7 @@ export default function Settings() {
     }
     if (code === 429) {
       if (isFreeTierExhausted) {
-        return 'Chave válida, mas cota gratuita diária esgotada (limit: 0). O Gemini vai funcionar normalmente amanhã quando a cota resetar. Para uso imediato, ative o faturamento no Google AI Studio.';
+        return 'Chave válida, mas cota gratuita diária esgotada. O Gemini vai funcionar normalmente amanhã quando a cota resetar.';
       }
       return 'Muitas requisições. Aguarde alguns minutos e tente novamente.';
     }
@@ -231,6 +271,26 @@ export default function Settings() {
       ? `Erro ao conectar com a API do Gemini (código ${code ?? 'sem resposta'}): ${error}`
       : 'Erro desconhecido ao testar a chave.';
   }
+
+  // — Derived Gemini connection status —
+  const connStatus: 'none' | 'ok' | 'error' | 'untested' | 'testing' = (() => {
+    if (!settingsQ.data?.gemini_key_set) return 'none';
+    if (geminiTestStatus === 'testing') return 'testing';
+    if (geminiTestStatus !== 'idle') return geminiTestStatus.ok ? 'ok' : 'error';
+    return settingsQ.data.gemini_key_updated_at ? 'ok' : 'untested';
+  })();
+
+  const connErrorMsg =
+    geminiTestStatus !== 'idle' && geminiTestStatus !== 'testing' && !geminiTestStatus.ok
+      ? geminiTestStatus.message
+      : '';
+
+  const connSuccessMsg =
+    geminiTestStatus !== 'idle' && geminiTestStatus !== 'testing' && geminiTestStatus.ok
+      ? geminiTestStatus.message
+      : '';
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
     <div className={`${s.page} max-w-2xl`}>
@@ -263,7 +323,7 @@ export default function Settings() {
       </section>
 
       {/* Monitor de links — admin only */}
-      {user?.role === 'admin' && (
+      {isAdmin && (
         <section className={`${s.cardPad} mb-6`}>
           <h2 className={`font-semibold ${s.textPrimary} mb-1`}>Monitor de links</h2>
           <p className={`text-sm ${s.textSecondary} mb-4`}>
@@ -309,156 +369,247 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Integrações de IA — admin only */}
-      {user?.role === 'admin' && (
+      {/* ═══ Inteligência Artificial — Gemini Vision ═══ */}
+      {isAdmin && (
         <section className={`${s.cardPad} mb-6`}>
-          <h2 className={`font-semibold ${s.textPrimary} mb-1`}>Integrações de IA</h2>
-          <p className={`text-sm ${s.textSecondary} mb-4`}>
-            Usada como fallback quando o sistema não consegue determinar automaticamente se um produto está disponível.
-          </p>
 
-          <div className="space-y-3">
-            {settingsQ.data?.gemini_key_set ? (
-              <>
-                <div className="rounded-lg p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                  <p className="text-sm font-medium text-green-800 dark:text-green-300">
-                    ✅ Chave salva. Use o botão "Testar conexão" para verificar se está funcionando.
-                  </p>
-                  <p className="text-xs font-mono text-green-700 dark:text-green-400 mt-1">
-                    ●●●●●●●●{settingsQ.data.gemini_key_last4}
-                  </p>
-                  {settingsQ.data.gemini_key_updated_at && (
-                    <p className={`text-xs ${s.textMuted} mt-0.5`}>
+          {/* Header */}
+          <div className="flex items-start gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-lg">🤖</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className={`font-semibold ${s.textPrimary}`}>Gemini Vision</h2>
+              <p className={`text-xs ${s.textSecondary} mt-0.5 leading-relaxed`}>
+                Analisa páginas visualmente quando o verificador automático não consegue identificar o status
+              </p>
+            </div>
+          </div>
+
+          {/* ── Status indicator (only when key exists) ── */}
+          {connStatus !== 'none' && (
+            <div className={`rounded-lg border p-3.5 mb-5 transition-colors ${
+              connStatus === 'ok'
+                ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/20'
+                : connStatus === 'error'
+                  ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20'
+                  : connStatus === 'testing'
+                    ? 'bg-brand-50 dark:bg-brand-500/10 border-brand-200 dark:border-brand-500/20'
+                    : 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20'
+            }`}>
+              <div className="flex items-center gap-2">
+                <StatusDot status={connStatus === 'testing' ? 'testing' : connStatus as any} />
+                <span className={`text-sm font-medium ${
+                  connStatus === 'ok'      ? 'text-green-700 dark:text-green-400'
+                  : connStatus === 'error' ? 'text-red-700 dark:text-red-400'
+                  : connStatus === 'testing' ? 'text-brand-700 dark:text-brand-400'
+                  : 'text-amber-700 dark:text-amber-400'
+                }`}>
+                  {connStatus === 'ok'       && 'Conectado e funcionando'}
+                  {connStatus === 'error'    && 'Erro na conexão'}
+                  {connStatus === 'testing'  && 'Testando conexão...'}
+                  {connStatus === 'untested' && 'Chave salva — não testada ainda'}
+                </span>
+              </div>
+
+              {/* Detail line */}
+              {connStatus === 'ok' && (
+                <div className={`mt-1.5 ml-4 text-xs text-green-600/80 dark:text-green-400/70 space-y-0.5`}>
+                  {connSuccessMsg && <p>{connSuccessMsg}</p>}
+                  {settingsQ.data?.gemini_key_updated_at && !connSuccessMsg && (
+                    <p>
                       Último teste bem-sucedido:{' '}
                       {new Date(settingsQ.data.gemini_key_updated_at).toLocaleString('pt-BR', {
-                        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
                       })}
                     </p>
                   )}
+                  <p className="text-green-600/60 dark:text-green-400/50">Modelo: gemini-2.0-flash</p>
                 </div>
+              )}
+              {connStatus === 'untested' && (
+                <p className="mt-1 ml-4 text-xs text-amber-600/80 dark:text-amber-400/70">
+                  Clique em "Testar conexão" para verificar
+                </p>
+              )}
+              {connStatus === 'error' && connErrorMsg && (
+                <p className="mt-1 ml-4 text-xs text-red-600/80 dark:text-red-400/70">{connErrorMsg}</p>
+              )}
+            </div>
+          )}
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    onClick={() => testCurrentKey.mutate()}
-                    disabled={testCurrentKey.isPending || geminiTestStatus === 'testing'}
-                    className={s.btnSecondary}
-                  >
-                    {geminiTestStatus === 'testing' ? 'Testando...' : 'Testar conexão'}
-                  </button>
-                  {!geminiDeleteConfirm ? (
-                    <button onClick={() => setGeminiDeleteConfirm(true)} className={s.btnDanger}>
-                      Apagar chave
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs ${s.textSecondary}`}>Confirmar exclusão?</span>
-                      <button
-                        onClick={() => removeGemini.mutate()}
-                        disabled={removeGemini.isPending}
-                        className={`${s.btnDanger} text-xs py-1 px-2`}
-                      >
-                        Sim, apagar
-                      </button>
-                      <button onClick={() => setGeminiDeleteConfirm(false)} className={`${s.btnSecondary} text-xs py-1 px-2`}>
-                        Cancelar
-                      </button>
-                    </div>
-                  )}
-                </div>
+          {/* ── No key yet: amber notice ── */}
+          {connStatus === 'none' && (
+            <div className="rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-4">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                ⚠️ Nenhuma chave cadastrada. Sistema usando apenas Playwright para verificação.
+              </p>
+            </div>
+          )}
 
-                {geminiTestStatus !== 'idle' && geminiTestStatus !== 'testing' && (
-                  <div className={geminiTestStatus.ok ? s.alertSuccess : s.alertError}>
-                    {geminiTestStatus.ok ? '✅ ' : '❌ '}{geminiTestStatus.message}
-                  </div>
-                )}
+          {/* ── API Key input ── */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-1">
+              <label className={s.label}>Chave de API</label>
+              <button
+                type="button"
+                onClick={() => setShowGeminiKey((v) => !v)}
+                className={`text-xs ${s.textMuted} hover:${s.textSecondary} transition-colors`}
+              >
+                {showGeminiKey ? '🙈 ocultar' : '👁 mostrar'}
+              </button>
+            </div>
+            <input
+              type={showGeminiKey ? 'text' : 'password'}
+              value={geminiKey}
+              onChange={(e) => { setGeminiKey(e.target.value); setGeminiSaveStatus('idle'); }}
+              placeholder={
+                settingsQ.data?.gemini_key_set
+                  ? `●●●●●●●●${settingsQ.data.gemini_key_last4 ?? ''}  (deixe vazio para manter)`
+                  : 'Cole sua chave do Gemini aqui'
+              }
+              className={s.inputMono}
+              autoComplete="off"
+            />
+            <p className={s.hint}>
+              Obtenha em <span className="font-mono">aistudio.google.com</span>
+              {settingsQ.data?.gemini_key_set ? ' · salva de forma criptografada' : ' · será salva de forma criptografada'}.
+            </p>
+          </div>
 
-                <div>
-                  <label className={s.label}>Substituir chave (opcional)</label>
-                  <input
-                    type="password"
-                    value={geminiKey}
-                    onChange={(e) => { setGeminiKey(e.target.value); setGeminiSaveStatus('idle'); }}
-                    placeholder="Deixe vazio para manter a chave atual"
-                    className={s.inputMono}
-                    autoComplete="off"
-                  />
+          {/* Save new key */}
+          {geminiKey.trim() && (
+            <div className="mb-4 space-y-2">
+              <button
+                onClick={() => saveGemini.mutate()}
+                disabled={saveGemini.isPending}
+                className={s.btnPrimary}
+              >
+                {saveGemini.isPending ? 'Salvando...' : 'Salvar chave'}
+              </button>
+              {geminiSaveStatus !== 'idle' && (
+                <div className={geminiSaveStatus.ok ? s.alertSuccess : s.alertError}>
+                  {geminiSaveStatus.message}
                 </div>
-                {geminiKey.trim() && (
-                  <>
-                    <button
-                      onClick={() => saveGemini.mutate()}
-                      disabled={saveGemini.isPending}
-                      className={s.btnPrimary}
-                    >
-                      {saveGemini.isPending ? 'Salvando...' : 'Salvar'}
-                    </button>
-                    {geminiSaveStatus !== 'idle' && (
-                      <div className={geminiSaveStatus.ok ? s.alertSuccess : s.alertError}>
-                        {geminiSaveStatus.ok ? '✅ ' : '❌ '}{geminiSaveStatus.message}
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                  <p className="text-sm text-amber-800 dark:text-amber-300">
-                    ⚠️ Nenhuma chave cadastrada. Sistema usando apenas Playwright para verificação.
-                  </p>
-                </div>
-                <div>
-                  <label className={s.label}>Gemini API Key</label>
-                  <input
-                    type="password"
-                    value={geminiKey}
-                    onChange={(e) => { setGeminiKey(e.target.value); setGeminiSaveStatus('idle'); }}
-                    placeholder="Cole sua chave do Gemini aqui"
-                    className={s.inputMono}
-                    autoComplete="off"
-                  />
-                  <p className={s.hint}>
-                    Obtenha em <span className="font-mono">aistudio.google.com</span>. Salva de forma criptografada.
-                  </p>
-                </div>
-                <button
-                  onClick={() => saveGemini.mutate()}
-                  disabled={saveGemini.isPending || !geminiKey.trim()}
-                  className={s.btnPrimary}
-                >
-                  {saveGemini.isPending ? 'Salvando...' : 'Salvar'}
+              )}
+            </div>
+          )}
+
+          {/* ── Action buttons ── */}
+          {settingsQ.data?.gemini_key_set && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => testCurrentKey.mutate()}
+                disabled={geminiTestStatus === 'testing'}
+                className={s.btnSecondary}
+              >
+                {geminiTestStatus === 'testing' ? '⏳ Testando...' : '🔄 Testar conexão'}
+              </button>
+
+              {!geminiDeleteConfirm ? (
+                <button onClick={() => setGeminiDeleteConfirm(true)} className={s.btnDanger}>
+                  🗑️ Apagar chave
                 </button>
-                {geminiSaveStatus !== 'idle' && (
-                  <div className={geminiSaveStatus.ok ? s.alertSuccess : s.alertError}>
-                    {geminiSaveStatus.ok ? '✅ ' : '❌ '}{geminiSaveStatus.message}
-                  </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${s.textSecondary}`}>Confirmar exclusão?</span>
+                  <button
+                    onClick={() => removeGemini.mutate()}
+                    disabled={removeGemini.isPending}
+                    className={`${s.btnDanger} text-xs`}
+                  >
+                    Sim, apagar
+                  </button>
+                  <button
+                    onClick={() => setGeminiDeleteConfirm(false)}
+                    className={`${s.btnSecondary} text-xs py-1 px-2`}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Uso do mês ── */}
+          <div className="mt-5 pt-4 border-t border-gray-100 dark:border-white/[0.06]">
+            <p className={`text-[11px] font-semibold uppercase tracking-wider ${s.textMuted} mb-3`}>
+              📊 Uso do mês
+            </p>
+            <div className="grid grid-cols-2 gap-4 mb-2">
+              <div>
+                <p className={`text-xs ${s.textMuted} mb-0.5`}>Chamadas realizadas</p>
+                <p className={`text-lg font-semibold ${s.textPrimary}`}>
+                  {historyStatsQ.data?.summary.gemini_calls ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className={`text-xs ${s.textMuted} mb-0.5`}>Acerto da IA</p>
+                <p className={`text-lg font-semibold ${s.textPrimary}`}>
+                  {historyStatsQ.data?.summary.gemini_accuracy != null
+                    ? `${Math.round(historyStatsQ.data.summary.gemini_accuracy * 100)}%`
+                    : <span className={s.textMuted}>—</span>}
+                </p>
+                {!historyStatsQ.data?.summary.gemini_accuracy && (
+                  <p className={`text-xs ${s.textMuted}`}>sem dados ainda</p>
                 )}
-              </>
-            )}
+              </div>
+            </div>
+            <p className={`text-xs ${s.textMuted} leading-relaxed`}>
+              Gemini é acionado apenas como fallback quando o verificador automático tem dúvida sobre o status de um link.
+            </p>
           </div>
         </section>
       )}
 
-      {/* Verificação de links — admin only */}
-      {user?.role === 'admin' && (
+      {/* ═══ Verificar links quebrados ═══ */}
+      {isAdmin && (
         <section className={`${s.cardPad} mb-6`}>
-          <h2 className={`font-semibold ${s.textPrimary} mb-1`}>Verificar links quebrados</h2>
-          <p className={`text-sm ${s.textSecondary} mb-4`}>
-            Testa todos os links afiliados e envia notificação Telegram para perfis com bot configurado.
+          <div className="flex items-start gap-2 mb-1">
+            <h2 className={`font-semibold ${s.textPrimary}`}>🔍 Verificar links quebrados</h2>
+          </div>
+          <p className={`text-sm ${s.textSecondary} mb-1`}>
+            Força uma verificação imediata em todos os links.
           </p>
+          <p className={`text-xs ${s.textMuted} mb-4`}>
+            Normalmente o sistema verifica automaticamente conforme a prioridade de cada link.
+          </p>
+
+          {settingsQ.data?.monitor.last_run && (
+            <p className={`text-xs ${s.textMuted} mb-3`}>
+              Última verificação: {formatRelativeTime(settingsQ.data.monitor.last_run)}
+              {' '}·{' '}
+              <span className="opacity-70">
+                {new Date(settingsQ.data.monitor.last_run).toLocaleString('pt-BR', {
+                  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                })}
+              </span>
+            </p>
+          )}
+
           <button
             onClick={() => { setLinkCheckResult(null); linkCheck.mutate(); }}
             disabled={linkCheck.isPending}
             className={s.btnPrimary}
           >
-            {linkCheck.isPending ? 'Verificando...' : 'Verificar agora'}
+            {linkCheck.isPending ? '⏳ Verificando...' : '🔍 Verificar agora'}
           </button>
+
           {linkCheckResult && (
             <div className="mt-4 space-y-3">
-              <div className={linkCheckResult.broken === 0 ? s.alertSuccess : s.alertError}>
-                {linkCheckResult.broken === 0
-                  ? `✅ Todos os ${linkCheckResult.checked} links estão funcionando.`
-                  : `❌ ${linkCheckResult.broken} link(s) quebrado(s) de ${linkCheckResult.checked} verificados.`}
+              <div className={`${linkCheckResult.broken === 0 ? s.alertSuccess : s.alertError} flex items-center justify-between`}>
+                <span>
+                  {linkCheckResult.broken === 0
+                    ? `✅ Todos os ${linkCheckResult.checked} links estão funcionando.`
+                    : `❌ ${linkCheckResult.broken} link(s) quebrado(s) de ${linkCheckResult.checked} verificados.`}
+                </span>
+                <button
+                  onClick={() => setLinkCheckResult(null)}
+                  className="ml-4 opacity-60 hover:opacity-100 font-bold leading-none"
+                >
+                  ✕
+                </button>
               </div>
               {linkCheckResult.allResults?.length > 0 && (
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
@@ -527,7 +678,7 @@ export default function Settings() {
             </button>
             {backupCodes.length > 0 && (
               <div className="mt-3 space-y-3">
-                <div className={`${s.alertWarn}`}>
+                <div className={s.alertWarn}>
                   <p className="font-semibold text-sm mb-1">⚠️ Novos códigos gerados! Guarde-os agora.</p>
                   <p className="text-xs">Cada código só pode ser usado uma vez se você perder acesso ao autenticador.</p>
                 </div>
@@ -578,7 +729,7 @@ export default function Settings() {
                 onChange={(e) => setTotpCode(e.target.value)}
                 placeholder="000000"
                 maxLength={6}
-                className={`w-36 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-center text-lg font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-brand-500`}
+                className="w-36 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-center text-lg font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
               <button
                 onClick={() => enable.mutate()}
@@ -593,7 +744,6 @@ export default function Settings() {
 
         {totpStep === 'codes' && (
           <div className="space-y-4">
-            {/* Aviso principal */}
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4">
               <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm mb-1">
                 ⚠️ Guarde esses códigos agora! Eles não serão mostrados novamente.
@@ -603,7 +753,6 @@ export default function Settings() {
               </p>
             </div>
 
-            {/* Grid de códigos com botão de copiar individual */}
             <div className="grid grid-cols-2 gap-2">
               {backupCodes.map((c, i) => (
                 <div key={i} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2">
@@ -620,7 +769,6 @@ export default function Settings() {
               ))}
             </div>
 
-            {/* Ações de exportação */}
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={copyAllBackupCodes} className={s.btnSecondary}>
                 📋 Copiar todos os códigos
@@ -636,7 +784,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Aviso de confirmação + botão Concluir */}
             {!codesCopied && !codesDownloaded && (
               <p className={`text-xs ${s.textSecondary}`}>
                 Confirme que salvou os códigos para continuar

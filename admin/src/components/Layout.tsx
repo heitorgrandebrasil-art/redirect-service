@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
@@ -165,6 +165,7 @@ export default function Layout() {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [postLoginNotice, setPostLoginNotice] = useState<string | null>(null);
+  const [setupComplete, setSetupComplete] = useState(false);
 
   useEffect(() => {
     const notice = sessionStorage.getItem('post_login_notice');
@@ -172,6 +173,11 @@ export default function Layout() {
       sessionStorage.removeItem('post_login_notice');
       setPostLoginNotice(notice);
       setTimeout(() => setPostLoginNotice(null), 10000);
+    }
+    if (sessionStorage.getItem('post_setup_complete')) {
+      sessionStorage.removeItem('post_setup_complete');
+      setSetupComplete(true);
+      setTimeout(() => setSetupComplete(false), 8000);
     }
   }, []);
 
@@ -188,7 +194,9 @@ export default function Layout() {
     navigate('/admin/login');
   }
 
-  const userInitial = user?.email?.[0]?.toUpperCase() ?? '?';
+  const userInitial = (user?.name ?? user?.email)?.[0]?.toUpperCase() ?? '?';
+  const userDisplayName = user?.name || user?.email;
+  const userRoleLabel = user?.role === 'admin' ? 'Administrador' : 'Editor';
 
   return (
     <div className="flex min-h-screen bg-[#f6f8fa] dark:bg-gh-base">
@@ -222,8 +230,8 @@ export default function Layout() {
               {userInitial}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-gray-800 dark:text-gh-text text-xs font-medium truncate">{user?.email}</p>
-              <p className="text-gray-500 dark:text-gh-muted text-[10px] capitalize">{user?.role}</p>
+              <p className="text-gray-800 dark:text-gh-text text-xs font-medium truncate">{userDisplayName}</p>
+              <p className="text-gray-500 dark:text-gh-muted text-[10px]">{userRoleLabel}</p>
             </div>
           </div>
 
@@ -256,6 +264,23 @@ export default function Layout() {
 
       {/* ── Main content ── */}
       <main className="flex-1 md:ml-16 lg:ml-[220px] pb-14 md:pb-0 min-h-screen">
+        {setupComplete && (
+          <div className="bg-green-50 dark:bg-green-900/20 border-b border-green-200 dark:border-green-700 text-green-800 dark:text-green-300 text-sm px-4 py-3 flex items-center justify-between">
+            <span>
+              Conta criada com sucesso! Recomendamos ativar a autenticação de dois fatores.{' '}
+              <Link to="/admin/settings" className="font-semibold underline underline-offset-2 hover:opacity-80">
+                Ativar agora
+              </Link>
+            </span>
+            <button
+              onClick={() => setSetupComplete(false)}
+              className="text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-100 ml-4 font-bold leading-none"
+              aria-label="Fechar aviso"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {postLoginNotice && (
           <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm px-4 py-3 flex items-center justify-between">
             <span>⚠️ {postLoginNotice}</span>

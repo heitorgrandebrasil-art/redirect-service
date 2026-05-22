@@ -41,6 +41,7 @@ export async function runMigrations() {
   await query('ALTER TABLE videos ADD COLUMN IF NOT EXISTS profile_id INTEGER REFERENCES profiles(id) ON DELETE SET NULL');
   await query('ALTER TABLE redirect_clicks ADD COLUMN IF NOT EXISTS device_type TEXT');
 
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT`);
   await query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
   await query('CREATE INDEX IF NOT EXISTS idx_backup_codes_user_id ON backup_codes(user_id)');
   await query('CREATE INDEX IF NOT EXISTS idx_profiles_domain_id ON profiles(domain_id)');
