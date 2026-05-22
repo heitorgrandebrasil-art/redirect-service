@@ -111,6 +111,31 @@ export function registerPublicRedirectRoutes(fastify) {
 
   fastify.get('/r/:short_path', handleRedirect);
   fastify.get('/r/*', handleRedirect);
+
+  fastify.get('/:prefix/:short_path', async (request, reply) => {
+    const { prefix, short_path } = request.params;
+    let decodedPath = '';
+    try {
+      decodedPath = decodeURIComponent(short_path).trim();
+    } catch {
+      return sendMessage(reply, 404, 'Link não encontrado', 'O link de redirecionamento não pôde ser encontrado.', request);
+    }
+
+    const redirect = await redirectService.findRedirectForDomainPath(request.hostname, prefix, decodedPath);
+    if (!redirect) {
+      return sendMessage(reply, 404, 'Link não encontrado', 'O link de redirecionamento não pôde ser encontrado.', request);
+    }
+
+    if (!redirect.active) {
+      redirectService.logRedirectClick(redirect, { ...requestMetadata(request), statusCode: 410 });
+      return sendMessage(reply, 410, 'Link desativado', 'Este link de redirecionamento está desativado.', request);
+    }
+
+    redirectService.logRedirectClick(redirect, { ...requestMetadata(request), statusCode: 302 });
+    const utmSource = request.hostname || new URL(config.app.publicBaseUrl).hostname;
+    const finalUrl = appendUtmSource(redirect.target_url, utmSource);
+    return reply.redirect(302, finalUrl);
+  });
 }
 
 export default async function publicRedirectRoutes(fastify) {

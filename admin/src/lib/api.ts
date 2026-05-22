@@ -102,8 +102,10 @@ export const getConfig = () => api.get('/config').then((r) => r.data as { public
 
 // Domains
 export const listDomains = () => api.get('/domains').then((r) => r.data.data);
-export const createDomain = (name: string, hostname: string) =>
-  api.post('/domains', { name, hostname }).then((r) => r.data.data);
+export const createDomain = (data: { name: string; hostname: string; prefix?: string }) =>
+  api.post('/domains', data).then((r) => r.data.data);
+export const updateDomain = (id: number, data: { name?: string; hostname?: string; prefix?: string; enabled?: boolean }) =>
+  api.patch(`/domains/${id}`, data).then((r) => r.data.data);
 export const deleteDomain = (id: number) =>
   api.delete(`/domains/${id}`).then((r) => r.data.data);
 
@@ -143,6 +145,7 @@ export interface BrokenLinkItem {
   profile_id: number | null;
   profile_name: string | null;
   domain_hostname: string | null;
+  domain_prefix: string | null;
 }
 export const getBrokenLinks = () =>
   api.get('/broken-links').then((r) => r.data.data as BrokenLinkItem[]);

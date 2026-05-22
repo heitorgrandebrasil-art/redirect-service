@@ -17,10 +17,10 @@ export async function getDomain(id) {
 
 export async function createDomain(payload) {
   const result = await query(
-    `INSERT INTO domains (name, hostname, enabled)
-     VALUES ($1, $2, $3)
+    `INSERT INTO domains (name, hostname, enabled, prefix)
+     VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [payload.name, payload.hostname, payload.enabled ?? true]
+    [payload.name, payload.hostname, payload.enabled ?? true, payload.prefix ?? 'r']
   );
 
   logAudit('domain.created', { domainId: result.rows[0].id, hostname: payload.hostname });
@@ -32,7 +32,7 @@ export async function updateDomain(id, payload) {
   const values = [];
   let idx = 1;
 
-  for (const key of ['name', 'hostname', 'enabled']) {
+  for (const key of ['name', 'hostname', 'enabled', 'prefix']) {
     if (payload[key] !== undefined) {
       fields.push(`${key} = $${idx}`);
       values.push(payload[key]);

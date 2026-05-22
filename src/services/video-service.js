@@ -120,7 +120,7 @@ export async function deleteVideo(id) {
 export async function listProductsForVideo(videoId) {
   await getVideo(videoId);
   const result = await query(
-    `SELECT p.*, d.hostname AS domain_hostname, COALESCE(c.click_count, 0)::int AS click_count
+    `SELECT p.*, d.hostname AS domain_hostname, d.prefix AS domain_prefix, COALESCE(c.click_count, 0)::int AS click_count
      FROM products p
      LEFT JOIN domains d ON d.id = p.domain_id
      LEFT JOIN redirects r ON r.product_id = p.id

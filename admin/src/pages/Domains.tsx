@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listDomains, createDomain, deleteDomain } from '../lib/api';
+import { listDomains, createDomain, updateDomain, deleteDomain } from '../lib/api';
 import { s } from '../lib/styles';
 
 function IcChevron({ open }: { open: boolean }) {
@@ -12,26 +12,50 @@ function IcChevron({ open }: { open: boolean }) {
   );
 }
 
+const PREFIX_EXAMPLES = ['r', 'go', 'oferta', 'recomenda'];
+
 export default function Domains() {
   const qc = useQueryClient();
   const domains = useQuery({ queryKey: ['domains'], queryFn: listDomains });
 
+  // ── Create ────────────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
   const [hostname, setHostname] = useState('');
   const [name, setName] = useState('');
+  const [prefix, setPrefix] = useState('r');
   const [createError, setCreateError] = useState('');
-  const [removeError, setRemoveError] = useState('');
   const [showDns, setShowDns] = useState(false);
 
+  function resetCreate() { setHostname(''); setName(''); setPrefix('r'); setCreateError(''); setShowDns(false); }
+
   const create = useMutation({
-    mutationFn: () => createDomain(name || hostname, hostname),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['domains'] });
-      setShowCreate(false); setHostname(''); setName(''); setShowDns(false);
-    },
+    mutationFn: () => createDomain({ name: name || hostname, hostname, prefix }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['domains'] }); setShowCreate(false); resetCreate(); },
     onError: (e: any) => setCreateError(e.response?.data?.message || '❌ Não foi possível cadastrar o domínio. Tente de novo.'),
   });
 
+  // ── Edit ──────────────────────────────────────────────────────────────────────
+  const [editTarget, setEditTarget] = useState<any>(null);
+  const [eHostname, setEHostname] = useState('');
+  const [eName, setEName] = useState('');
+  const [ePrefix, setEPrefix] = useState('r');
+  const [eEnabled, setEEnabled] = useState(true);
+  const [editError, setEditError] = useState('');
+
+  function openEdit(d: any) {
+    setEditTarget(d);
+    setEHostname(d.hostname); setEName(d.name ?? ''); setEPrefix(d.prefix ?? 'r'); setEEnabled(d.enabled); setEditError('');
+  }
+  function closeEdit() { setEditTarget(null); }
+
+  const edit = useMutation({
+    mutationFn: () => updateDomain(editTarget.id, { name: eName || eHostname, hostname: eHostname, prefix: ePrefix, enabled: eEnabled }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['domains'] }); closeEdit(); },
+    onError: (e: any) => setEditError(e.response?.data?.message || '❌ Não foi possível salvar. Tente de novo.'),
+  });
+
+  // ── Delete ────────────────────────────────────────────────────────────────────
+  const [removeError, setRemoveError] = useState('');
   const remove = useMutation({
     mutationFn: (id: number) => deleteDomain(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['domains'] }); setRemoveError(''); },
@@ -48,7 +72,7 @@ export default function Domains() {
           <h1 className={s.h1}>Domínios</h1>
           <p className={s.sub}>Domínios usados para links curtos</p>
         </div>
-        <button onClick={() => { setShowCreate(true); setCreateError(''); setHostname(''); setName(''); setShowDns(false); }} className={s.btnPrimary}>
+        <button onClick={() => { setShowCreate(true); resetCreate(); }} className={s.btnPrimary}>
           + Novo domínio
         </button>
       </div>
@@ -79,7 +103,11 @@ export default function Domains() {
             {/* Info */}
             <div className="flex-1 min-w-0">
               <p className="font-medium text-gray-900 dark:text-gh-text text-sm truncate">{d.name}</p>
-              <code className="text-xs text-gray-500 dark:text-gh-muted font-mono">{d.hostname}</code>
+              <div className="flex items-center gap-2 mt-0.5">
+                <code className="text-xs text-gray-500 dark:text-gh-muted font-mono">{d.hostname}</code>
+                <span className="text-xs text-gray-400 dark:text-gh-muted">·</span>
+                <code className="text-xs text-brand-500 dark:text-brand-400 font-mono">/{d.prefix ?? 'r'}/</code>
+              </div>
             </div>
 
             {/* Status badge */}
@@ -96,13 +124,21 @@ export default function Domains() {
               {new Date(d.created_at).toLocaleDateString('pt-BR')}
             </span>
 
-            {/* Delete */}
-            <button
-              onClick={() => { if (confirm(`Excluir "${d.hostname}"?`)) remove.mutate(d.id); }}
-              className="flex-shrink-0 text-xs text-red-500 hover:text-red-400 font-medium transition-colors px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-500/10"
-            >
-              Excluir
-            </button>
+            {/* Actions */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => openEdit(d)}
+                className="text-xs px-2.5 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors"
+              >
+                Editar
+              </button>
+              <button
+                onClick={() => { if (confirm(`Excluir "${d.hostname}"?`)) remove.mutate(d.id); }}
+                className="text-xs text-red-500 hover:text-red-400 font-medium transition-colors px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-500/10"
+              >
+                Excluir
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -118,7 +154,7 @@ export default function Domains() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* ── Modal Novo domínio ─────────────────────────────────────────────────── */}
       {showCreate && (
         <div className={s.overlay}>
           <div className={s.modal}>
@@ -140,6 +176,29 @@ export default function Domains() {
                 <input value={name} onChange={(e) => setName(e.target.value)}
                   placeholder={hostname || 'Ex: Canal Principal'} className={s.input} />
                 <p className={s.hint}>Se vazio, usa o próprio endereço como nome</p>
+              </div>
+
+              <div>
+                <label className={s.label}>Prefixo do link</label>
+                <div className="flex gap-2">
+                  <input value={prefix} onChange={(e) => setPrefix(e.target.value)} required
+                    placeholder="r" className={`${s.inputMono} flex-1`} />
+                </div>
+                <div className="flex gap-1.5 mt-1.5">
+                  {PREFIX_EXAMPLES.map((ex) => (
+                    <button key={ex} type="button" onClick={() => setPrefix(ex)}
+                      className={`text-xs px-2 py-0.5 rounded border transition-colors font-mono ${
+                        prefix === ex
+                          ? 'border-brand-400 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400'
+                          : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-brand-300 hover:text-brand-500'
+                      }`}>
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+                <p className={s.hint}>
+                  Aparece na URL: <code className="font-mono">{hostname || 'dominio.com'}/{prefix || 'r'}/abc123</code>
+                </p>
               </div>
 
               {/* DNS section — collapsible */}
@@ -167,9 +226,71 @@ export default function Domains() {
               </div>
 
               <div className="flex justify-end gap-3 pt-1">
-                <button type="button" onClick={() => setShowCreate(false)} className={s.btnSecondary}>Cancelar</button>
+                <button type="button" onClick={() => { setShowCreate(false); resetCreate(); }} className={s.btnSecondary}>Cancelar</button>
                 <button type="submit" disabled={create.isPending || !hostname} className={s.btnPrimary}>
                   {create.isPending ? 'Cadastrando...' : 'Cadastrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Editar domínio ───────────────────────────────────────────────── */}
+      {editTarget && (
+        <div className={s.overlay}>
+          <div className={s.modal}>
+            <div className={s.modalHeader}>
+              <h2 className={s.modalTitle}>Editar domínio</h2>
+            </div>
+            <form onSubmit={(e: FormEvent) => { e.preventDefault(); setEditError(''); edit.mutate(); }} className={s.modalBody}>
+              {editError && <div className={s.alertError}>{editError}</div>}
+
+              <div>
+                <label className={s.label}>Endereço do domínio</label>
+                <input value={eHostname} onChange={(e) => setEHostname(e.target.value)} required
+                  placeholder="links.seusite.com.br" className={s.inputMono} />
+              </div>
+
+              <div>
+                <label className={s.label}>Nome de exibição</label>
+                <input value={eName} onChange={(e) => setEName(e.target.value)}
+                  placeholder={eHostname} className={s.input} />
+              </div>
+
+              <div>
+                <label className={s.label}>Prefixo do link</label>
+                <input value={ePrefix} onChange={(e) => setEPrefix(e.target.value)} required
+                  placeholder="r" className={s.inputMono} />
+                <div className="flex gap-1.5 mt-1.5">
+                  {PREFIX_EXAMPLES.map((ex) => (
+                    <button key={ex} type="button" onClick={() => setEPrefix(ex)}
+                      className={`text-xs px-2 py-0.5 rounded border transition-colors font-mono ${
+                        ePrefix === ex
+                          ? 'border-brand-400 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400'
+                          : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-brand-300 hover:text-brand-500'
+                      }`}>
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+                <p className={s.hint}>
+                  URL resultante: <code className="font-mono">{eHostname || 'dominio.com'}/{ePrefix || 'r'}/abc123</code>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={eEnabled} onChange={(e) => setEEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                  <span className={`text-sm ${s.textPrimary}`}>Domínio ativo</span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-1">
+                <button type="button" onClick={closeEdit} className={s.btnSecondary}>Cancelar</button>
+                <button type="submit" disabled={edit.isPending || !eHostname} className={s.btnPrimary}>
+                  {edit.isPending ? 'Salvando...' : 'Salvar'}
                 </button>
               </div>
             </form>

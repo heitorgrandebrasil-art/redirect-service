@@ -138,4 +138,6 @@ export async function runMigrations() {
       ended_at         TIMESTAMPTZ
     )
   `);
+
+  await query(`ALTER TABLE domains ADD COLUMN IF NOT EXISTS prefix VARCHAR(50) NOT NULL DEFAULT 'r'`);
 }

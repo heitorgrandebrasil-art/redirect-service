@@ -235,7 +235,9 @@ export default function CampaignDetail() {
 
   function shortUrlFor(domainHostname: string | null | undefined, shortPath: string): string | null {
     if (!domainHostname) return null;
-    return `https://${domainHostname}/r/${shortPath}`;
+    const domain = domains.data?.find((d: any) => d.hostname === domainHostname);
+    const pfx = domain?.prefix ?? 'r';
+    return `https://${domainHostname}/${pfx}/${shortPath}`;
   }
 
   // For the add form preview
@@ -244,7 +246,8 @@ export default function CampaignDetail() {
   const previewBase = previewDomain
     ? `https://${previewDomain.hostname}`
     : (config.data?.publicBaseUrl ?? 'http://localhost:4000');
-  const previewUrl = previewUri.length >= 2 ? `${previewBase}/r/${previewUri}` : null;
+  const previewPfx = previewDomain?.prefix ?? 'r';
+  const previewUrl = previewUri.length >= 2 ? `${previewBase}/${previewPfx}/${previewUri}` : null;
 
   const productList = products.data ?? [];
 

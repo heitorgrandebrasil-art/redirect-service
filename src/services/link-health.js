@@ -40,6 +40,7 @@ export async function checkAllLinks() {
       p.snoozed_until,
       p.domain_id,
       d.hostname     AS domain_hostname,
+      d.prefix       AS domain_prefix,
       v.title        AS campaign_title,
       v.platform,
       pr.id          AS profile_id,
@@ -112,7 +113,8 @@ export async function checkAllLinks() {
 
         if (hasCredentials && !p.awaiting_confirmation && !isSnoozed) {
           const base = p.domain_hostname ? `https://${p.domain_hostname}` : config.app.publicBaseUrl;
-          const shortUrl = `${base}/r/${p.short_path}`;
+          const domainPrefix = p.domain_hostname ? (p.domain_prefix || 'r') : 'r';
+          const shortUrl = `${base}/${domainPrefix}/${p.short_path}`;
           const msg = buildBrokenLinkMessage({
             campaignTitle: p.campaign_title ?? p.product_title,
             platform: p.platform,

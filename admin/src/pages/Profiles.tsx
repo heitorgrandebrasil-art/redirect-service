@@ -136,7 +136,7 @@ export default function Profiles() {
     mutationFn: async () => {
       let domainId = form.domain_id;
       if (form.domainMode === 'new' && form.newDomainHostname.trim()) {
-        const nd = await createDomain(form.newDomainHostname.trim(), form.newDomainHostname.trim());
+        const nd = await createDomain({ name: form.newDomainHostname.trim(), hostname: form.newDomainHostname.trim() });
         domainId = nd.id;
         qc.invalidateQueries({ queryKey: ['domains'] });
       }

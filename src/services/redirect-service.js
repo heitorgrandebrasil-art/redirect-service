@@ -179,6 +179,38 @@ export async function findRedirectForPublicPath(shortPath) {
   return row;
 }
 
+export async function findRedirectForDomainPath(hostname, prefix, shortPath) {
+  const normalized = String(shortPath || '').replace(/^\/+/, '');
+  const cacheKey = `${hostname}:${prefix}:${normalized}`;
+
+  const cached = _cacheGet(cacheKey);
+  if (cached !== undefined) return cached || null;
+
+  const domainResult = await query(
+    `SELECT id, prefix FROM domains WHERE hostname = $1 AND enabled = true LIMIT 1`,
+    [hostname]
+  );
+  if (!domainResult.rowCount) { _cacheSet(cacheKey, false); return null; }
+
+  const domain = domainResult.rows[0];
+  if ((domain.prefix || 'r') !== prefix) { _cacheSet(cacheKey, false); return null; }
+
+  const result = await query(
+    `SELECT * FROM redirects WHERE short_path = $1 AND domain_id = $2 AND active = true LIMIT 1`,
+    [normalized, domain.id]
+  );
+  if (result.rowCount) { _cacheSet(cacheKey, result.rows[0]); return result.rows[0]; }
+
+  const product = await query(
+    `SELECT id, short_path, affiliate_url AS target_url, true AS active, id AS product_id, domain_id
+     FROM products WHERE short_path = $1 AND domain_id = $2 LIMIT 1`,
+    [normalized, domain.id]
+  );
+  const row = product.rowCount ? product.rows[0] : null;
+  _cacheSet(cacheKey, row || false);
+  return row;
+}
+
 export function logRedirectClick(redirect, metadata = {}) {
   query(
     `INSERT INTO redirect_clicks (redirect_id, short_path, target_url, status_code, ip, user_agent, referer, device_type)

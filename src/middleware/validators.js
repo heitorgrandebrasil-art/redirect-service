@@ -29,7 +29,8 @@ const productProperties = {
 const domainProperties = {
   name: { type: 'string', minLength: 3, maxLength: 255 },
   hostname: { type: 'string', minLength: 3, maxLength: 255 },
-  enabled: { type: 'boolean' }
+  enabled: { type: 'boolean' },
+  prefix: { type: 'string', minLength: 1, maxLength: 50 }
 };
 
 const redirectProperties = {
