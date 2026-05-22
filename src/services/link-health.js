@@ -60,7 +60,14 @@ export async function checkAllLinks() {
   const allResults = [];
 
   for (const p of products) {
-    const check = await orchestrateCheck(p.id, p.affiliate_url, p.marketplace);
+    let check;
+    try {
+      check = await orchestrateCheck(p.id, p.affiliate_url, p.marketplace);
+    } catch (err) {
+      // orchestrateCheck já captura internamente, mas como defesa extra:
+      logger.error({ event: 'link.check.unexpected', productId: p.id, error: err.message });
+      check = { ok: false, status: 0, humanReview: true };
+    }
 
     await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
 
@@ -166,7 +173,13 @@ export async function checkLinksForVideo(videoId) {
   const results = [];
 
   for (const p of products) {
-    const check = await orchestrateCheck(p.id, p.affiliate_url, p.marketplace);
+    let check;
+    try {
+      check = await orchestrateCheck(p.id, p.affiliate_url, p.marketplace);
+    } catch (err) {
+      logger.error({ event: 'link.check.unexpected', productId: p.id, error: err.message });
+      check = { ok: false, status: 0, humanReview: true };
+    }
 
     await query(`UPDATE products SET link_last_checked_at = now(), link_last_status_code = $2 WHERE id = $1`, [p.id, check.status || null]);
 

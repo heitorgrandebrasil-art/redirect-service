@@ -1,6 +1,7 @@
 import logger from '../logger.js';
 
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 2;       // máximo de páginas simultâneas
+const PAGE_TIMEOUT_MS = 45_000; // timeout total por operação de página (além do goto interno)
 
 let _browser = null;
 let _available = false;
@@ -72,10 +73,13 @@ export async function initBrowser() {
 export const isBrowserAvailable = () => _available && _browser !== null;
 
 // Opens a new isolated browser context, runs fn(page), then closes the context.
-// Respects the MAX_CONCURRENT concurrency limit.
+// Respects the MAX_CONCURRENT concurrency limit and enforces PAGE_TIMEOUT_MS.
+// Closing the context in `finally` aborts any in-progress Playwright operation,
+// preventing zombie pages from holding semaphore slots indefinitely.
 export async function withPage(fn) {
   await _acquire();
   let ctx = null;
+  let timeoutId = null;
   try {
     if (!_browser) {
       const ok = await initBrowser();
@@ -89,8 +93,19 @@ export async function withPage(fn) {
       extraHTTPHeaders: { 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8' },
     });
     const page = await ctx.newPage();
-    return await fn(page);
+
+    return await Promise.race([
+      fn(page),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error(`withPage: operação excedeu ${PAGE_TIMEOUT_MS}ms`)),
+          PAGE_TIMEOUT_MS
+        );
+      }),
+    ]);
   } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    // ctx.close() cancela navegações em andamento — mata qualquer página zumbi
     if (ctx) await ctx.close().catch(() => {});
     _release();
   }

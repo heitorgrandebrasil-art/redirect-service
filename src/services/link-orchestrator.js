@@ -7,6 +7,10 @@ import { analyzeScreenshot } from './gemini-service.js';
 const ML_HOSTS     = ['mercadolivre.com.br', 'mercadolivre.com', 'ml.com'];
 const AMAZON_HOSTS = ['amazon.com.br', 'amazon.com', 'amzn.to'];
 
+// Timeout total por link, incluindo browser + Gemini.
+// Garante que um link travado não bloqueie os demais indefinidamente.
+const LINK_TIMEOUT_MS = 55_000;
+
 function detectMarketplace(url) {
   try {
     const { hostname } = new URL(url);
@@ -50,17 +54,47 @@ async function logHistory(productId, url, marketplace, checkerResult, geminiResu
   }
 }
 
+// Wrapper público: aplica timeout global e converte qualquer erro em human_review.
+// Garante que falha de um link nunca interrompe o loop de verificação dos demais.
 export async function orchestrateCheck(productId, url, marketplace) {
   const effectiveMarketplace = marketplace || detectMarketplace(url);
-  const cycleMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const cycleMonth = new Date().toISOString().slice(0, 7);
 
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`Timeout após ${LINK_TIMEOUT_MS}ms`)),
+      LINK_TIMEOUT_MS
+    );
+  });
+
+  try {
+    const result = await Promise.race([
+      _doCheck(productId, url, effectiveMarketplace, cycleMonth),
+      timeoutPromise,
+    ]);
+    return result;
+  } catch (err) {
+    logger.warn({ event: 'orchestrator.check.failed', productId, url, error: err.message });
+    // Registra no histórico mesmo em caso de falha/timeout
+    await logHistory(
+      productId, url, effectiveMarketplace,
+      { status: 'human_review', reason: err.message, confidence: 0 },
+      null, 'human_review', cycleMonth
+    ).catch(() => {});
+    return { ok: false, status: 0, humanReview: true };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function _doCheck(productId, url, effectiveMarketplace, cycleMonth) {
   let checkerResult;
   if (effectiveMarketplace === 'mercadolivre') {
     checkerResult = await checkMercadoLivreLink(url);
   } else if (effectiveMarketplace === 'amazon') {
     checkerResult = await checkAmazonLink(url);
   } else {
-    // Generic fetch for outros/affiliate
     checkerResult = await checkGeneric(url);
   }
 
