@@ -71,12 +71,14 @@ export default async function authRoutes(fastify) {
     }
 
     const clean = code.replace(/\s/g, '');
-    const verified =
-      (await authService.verifyTOTPCode(user, clean)) ||
-      (await authService.verifyBackupCode(user.id, clean));
-
-    if (!verified) {
-      return reply.status(401).send({ status: 'error', message: 'Código inválido' });
+    let usedBackupCode = false;
+    const totpOk = await authService.verifyTOTPCode(user, clean);
+    if (!totpOk) {
+      const backupOk = await authService.verifyBackupCode(user.id, clean);
+      if (!backupOk) {
+        return reply.status(401).send({ status: 'error', message: 'Código inválido' });
+      }
+      usedBackupCode = true;
     }
 
     const accessToken = fastify.jwt.sign(
@@ -84,7 +86,7 @@ export default async function authRoutes(fastify) {
       { expiresIn: config.jwt.accessTokenExpiry }
     );
     const { password_hash, totp_secret, ...safeUser } = user;
-    return reply.send({ status: 'ok', accessToken, user: safeUser });
+    return reply.send({ status: 'ok', accessToken, user: safeUser, usedBackupCode });
   });
 
   fastify.get('/auth/me', { preHandler: [authenticateJWT] }, async (request, reply) => {
@@ -112,7 +114,21 @@ export default async function authRoutes(fastify) {
     return reply.send({ status: 'ok', data: { backupCodes: codes } });
   });
 
-  fastify.post('/auth/disable-totp', { preHandler: [authenticateJWT] }, async (request, reply) => {
+  fastify.post('/auth/disable-totp', {
+    preHandler: [authenticateJWT],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['currentPassword'],
+        properties: { currentPassword: { type: 'string' } },
+        additionalProperties: false
+      }
+    }
+  }, async (request, reply) => {
+    const user = await authService.findUserByEmail(request.user.email);
+    if (!user || !(await authService.verifyPassword(user, request.body.currentPassword))) {
+      return reply.status(401).send({ status: 'error', message: 'Senha incorreta' });
+    }
     await authService.disableTOTP(request.user.id);
     return reply.send({ status: 'ok' });
   });

@@ -4,6 +4,21 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased;
+    @apply bg-[#f6f8fa] dark:bg-gh-base text-gray-900 dark:text-gh-text antialiased;
+  }
+}
+
+@layer utilities {
+  /* Staggered fade-up for card grids */
+  .stagger-1 { animation: fade-up 0.25s ease-out 0ms both; }
+  .stagger-2 { animation: fade-up 0.25s ease-out 80ms both; }
+  .stagger-3 { animation: fade-up 0.25s ease-out 160ms both; }
+  .stagger-4 { animation: fade-up 0.25s ease-out 240ms both; }
+  .stagger-5 { animation: fade-up 0.25s ease-out 320ms both; }
+  .stagger-6 { animation: fade-up 0.25s ease-out 400ms both; }
+
+  /* Sliding tab underline */
+  .tab-indicator {
+    transition: transform 0.2s ease, width 0.2s ease;
   }
 }

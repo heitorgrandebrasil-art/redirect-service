@@ -14,7 +14,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const isLoginRequest = err.config?.url?.includes('/auth/login');
+    if (err.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
       window.location.href = '/admin/login';
@@ -35,7 +36,8 @@ export const getMe = () => api.get('/auth/me').then((r) => r.data.data);
 export const setupTotp = () => api.post('/auth/setup-totp').then((r) => r.data.data);
 export const enableTotp = (code: string) =>
   api.post('/auth/enable-totp', { code }).then((r) => r.data.data);
-export const disableTotp = () => api.post('/auth/disable-totp').then((r) => r.data);
+export const disableTotp = (currentPassword: string) =>
+  api.post('/auth/disable-totp', { currentPassword }).then((r) => r.data);
 export const regenerateBackupCodes = () =>
   api.post('/auth/regenerate-backup-codes').then((r) => r.data.data);
 export const changePassword = (currentPassword: string, newPassword: string) =>

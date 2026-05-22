@@ -78,6 +78,10 @@ export default function Login() {
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+
+          <p className="text-center text-xs text-gray-500 pt-1">
+            Problemas para acessar? Use um código de backup ou contate o administrador.
+          </p>
         </form>
       </div>
     </div>

@@ -1,32 +1,92 @@
 import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import {
-  getHistoryStats, getHistorySize, deleteHistoryAll,
-} from '../lib/api';
+import { getHistoryStats, getHistorySize, deleteHistoryAll } from '../lib/api';
 import { s } from '../lib/styles';
+import MetricCard from '../components/MetricCard';
+import ConfirmModal from '../components/ConfirmModal';
 
-function statusBadge(v: string | null) {
-  if (!v) return <span className={s.textMuted}>—</span>;
-  const styles: Record<string, string> = {
-    ok:        'text-green-600 dark:text-green-400',
-    broken:    'text-red-600 dark:text-red-400',
-    uncertain: 'text-amber-600 dark:text-amber-400',
-  };
-  const labels: Record<string, string> = { ok: '✅ OK', broken: '❌ Quebrado', uncertain: '❓ Incerto' };
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+function IcCheck() {
   return (
-    <span className={`text-xs font-medium ${styles[v] ?? s.textSecondary}`}>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+function IcX() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+function IcClock() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+function IcCpu() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
+      <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
+      <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
+      <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
+    </svg>
+  );
+}
+function IcTarget() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+function IcHash() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" />
+      <line x1="10" y1="3" x2="8" y2="21" /><line x1="16" y1="3" x2="14" y2="21" />
+    </svg>
+  );
+}
+
+// ── Status badge for table ────────────────────────────────────────────────────
+
+function StatusPill({ v }: { v: string | null }) {
+  if (!v) return <span className="text-gray-400 dark:text-gh-muted text-xs">—</span>;
+  const map: Record<string, string> = {
+    ok:        'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    broken:    'bg-red-500/10 text-red-400 border-red-500/20',
+    uncertain: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  };
+  const labels: Record<string, string> = { ok: 'OK', broken: 'Quebrado', uncertain: 'Incerto' };
+  return (
+    <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border ${map[v] ?? 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`}>
       {labels[v] ?? v}
     </span>
   );
 }
 
-interface SummaryCard {
-  label: string;
-  value: string | number;
-  color: string;
-  bg: string;
+// Special badge: Gemini recovered (playwright=broken, final=ok)
+function RecoveredBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-teal-500/10 text-teal-400 border-teal-500/20">
+      🤖 GEMINI_RECOVERED
+    </span>
+  );
 }
+
+const AXIS_COLOR = '#7d8590';
+const GRID_COLOR = 'rgba(125,133,144,0.12)';
+
+// ── History ───────────────────────────────────────────────────────────────────
 
 export default function History() {
   const qc = useQueryClient();
@@ -34,7 +94,7 @@ export default function History() {
   const sizeQ  = useQuery({ queryKey: ['history-size'],  queryFn: getHistorySize });
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [cleanupMsg,      setCleanupMsg]      = useState<{ ok: boolean; text: string } | null>(null);
+  const [cleanupMsg, setCleanupMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const deleteAll = useMutation({
     mutationFn: deleteHistoryAll,
@@ -48,7 +108,6 @@ export default function History() {
     onError: () => setCleanupMsg({ ok: false, text: '❌ Não foi possível apagar o histórico. Tente de novo.' }),
   });
 
-  // Fill last 30 days even when there's no data for a day
   const chartData = useMemo(() => {
     const map = new Map((statsQ.data?.daily ?? []).map((d) => [d.day, d.total]));
     return Array.from({ length: 30 }, (_, i) => {
@@ -62,45 +121,6 @@ export default function History() {
 
   const summary = statsQ.data?.summary;
 
-  const cards: SummaryCard[] = [
-    {
-      label: 'Verificações no mês',
-      value: summary?.total_checked ?? '—',
-      color: 'text-gray-700 dark:text-gray-200',
-      bg:    'bg-gray-50 dark:bg-gray-800/60',
-    },
-    {
-      label: 'Links verificados OK',
-      value: summary?.total_ok ?? '—',
-      color: 'text-green-700 dark:text-green-400',
-      bg:    'bg-green-50 dark:bg-green-900/20',
-    },
-    {
-      label: 'Quebrados detectados',
-      value: summary?.total_broken ?? '—',
-      color: 'text-red-700 dark:text-red-400',
-      bg:    'bg-red-50 dark:bg-red-900/20',
-    },
-    {
-      label: 'Revisões pendentes',
-      value: summary?.pending_human_review ?? '—',
-      color: 'text-orange-700 dark:text-orange-400',
-      bg:    'bg-orange-50 dark:bg-orange-900/20',
-    },
-    {
-      label: 'Chamadas ao Gemini',
-      value: summary?.gemini_calls ?? '—',
-      color: 'text-purple-700 dark:text-purple-400',
-      bg:    'bg-purple-50 dark:bg-purple-900/20',
-    },
-    {
-      label: 'Acerto do Gemini',
-      value: summary?.gemini_accuracy != null ? `${summary.gemini_accuracy}%` : '—',
-      color: 'text-blue-700 dark:text-blue-400',
-      bg:    'bg-blue-50 dark:bg-blue-900/20',
-    },
-  ];
-
   const monthLabel = statsQ.data?.month
     ? new Date(statsQ.data.month + '-01').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     : '';
@@ -112,14 +132,31 @@ export default function History() {
         {monthLabel && <p className={s.sub}>Resumo de {monthLabel}</p>}
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        {cards.map((c) => (
-          <div key={c.label} className={`${c.bg} rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-1`}>
-            <span className={`text-2xl font-bold ${c.color}`}>{c.value}</span>
-            <span className={`text-xs ${s.textMuted} leading-tight`}>{c.label}</span>
-          </div>
-        ))}
+      {/* Summary metric cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+        <div className="stagger-1">
+          <MetricCard label="Verificadas no mês" value={summary?.total_checked ?? 0} icon={<IcHash />} />
+        </div>
+        <div className="stagger-2">
+          <MetricCard label="Links OK" value={summary?.total_ok ?? 0} icon={<IcCheck />} variant="success" />
+        </div>
+        <div className="stagger-3">
+          <MetricCard label="Quebrados" value={summary?.total_broken ?? 0} icon={<IcX />} variant="danger" />
+        </div>
+        <div className="stagger-4">
+          <MetricCard label="Em revisão" value={summary?.pending_human_review ?? 0} icon={<IcClock />} variant="warning" />
+        </div>
+        <div className="stagger-5">
+          <MetricCard label="Chamadas Gemini" value={summary?.gemini_calls ?? 0} icon={<IcCpu />} variant="purple" />
+        </div>
+        <div className="stagger-6">
+          <MetricCard
+            label="Acerto do Gemini"
+            value={summary?.gemini_accuracy != null ? `${summary.gemini_accuracy}%` : '—'}
+            icon={<IcTarget />}
+            variant="purple"
+          />
+        </div>
       </div>
 
       {/* Line chart */}
@@ -130,40 +167,21 @@ export default function History() {
         ) : (
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(156,163,175,0.2)" />
-              <XAxis
-                dataKey="day"
-                tick={{ fontSize: 11, fill: 'currentColor' }}
-                tickLine={false}
-                interval={4}
-                className="text-gray-500 dark:text-gray-400"
-              />
-              <YAxis
-                allowDecimals={false}
-                tick={{ fontSize: 11, fill: 'currentColor' }}
-                tickLine={false}
-                axisLine={false}
-                className="text-gray-500 dark:text-gray-400"
-              />
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+              <XAxis dataKey="day" tick={{ fontSize: 11, fill: AXIS_COLOR }} tickLine={false} interval={4} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: AXIS_COLOR }} tickLine={false} axisLine={false} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'var(--tooltip-bg, #1f2937)',
-                  border: '1px solid rgba(75,85,99,0.4)',
+                  backgroundColor: '#21262d',
+                  border: '1px solid rgba(255,255,255,0.08)',
                   borderRadius: '8px',
                   fontSize: '12px',
-                  color: '#f9fafb',
+                  color: '#e6edf3',
                 }}
-                labelStyle={{ color: '#9ca3af' }}
+                labelStyle={{ color: '#7d8590' }}
                 formatter={(v) => [v, 'Verificações']}
               />
-              <Line
-                type="monotone"
-                dataKey="total"
-                stroke="#6366f1"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, fill: '#6366f1' }}
-              />
+              <Line type="monotone" dataKey="total" stroke="#6366f1" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#6366f1' }} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -171,7 +189,7 @@ export default function History() {
 
       {/* Records table */}
       <section className={`${s.tableWrap} mb-6`}>
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-white/[0.08]">
           <h2 className={`font-semibold ${s.textPrimary}`}>Últimos 50 registros</h2>
         </div>
         {statsQ.isLoading ? (
@@ -193,85 +211,76 @@ export default function History() {
                 </tr>
               </thead>
               <tbody className={s.tdDiv}>
-                {statsQ.data.records.map((r) => (
-                  <tr key={r.id} className={s.tr}>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                      {new Date(r.checked_at).toLocaleString('pt-BR', {
-                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                      })}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-600 dark:text-gray-300 capitalize whitespace-nowrap">
-                      {r.marketplace ?? '—'}
-                    </td>
-                    <td className="px-4 py-2.5 max-w-[220px]">
-                      <p className={`text-xs font-medium ${s.textPrimary} truncate`} title={r.url}>
-                        {r.product_title ?? r.url}
-                      </p>
-                      {r.product_title && (
-                        <p className={`text-xs ${s.textMuted} truncate`} title={r.url}>{r.url}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">{statusBadge(r.playwright_status)}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">{statusBadge(r.gemini_status)}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">{statusBadge(r.final_status)}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">{statusBadge(r.human_feedback)}</td>
-                  </tr>
-                ))}
+                {statsQ.data.records.map((r) => {
+                  const geminiRecovered = r.playwright_status === 'broken' && r.final_status === 'ok';
+                  return (
+                    <tr key={r.id} className={s.tr}>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs text-gray-500 dark:text-gh-muted">
+                        {new Date(r.checked_at).toLocaleString('pt-BR', {
+                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        })}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-600 dark:text-gh-muted capitalize whitespace-nowrap">
+                        {r.marketplace ?? '—'}
+                      </td>
+                      <td className="px-4 py-2.5 max-w-[220px]">
+                        <p className={`text-xs font-medium ${s.textPrimary} truncate`} title={r.url}>
+                          {r.product_title ?? r.url}
+                        </p>
+                        {r.product_title && (
+                          <p className={`text-xs ${s.textMuted} truncate`} title={r.url}>{r.url}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <StatusPill v={r.playwright_status} />
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <StatusPill v={r.gemini_status} />
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {geminiRecovered ? <RecoveredBadge /> : <StatusPill v={r.final_status} />}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <StatusPill v={r.human_feedback} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
 
-      {/* Cleanup section */}
+      {/* Manage section */}
       <section className={s.cardPad}>
         <h2 className={`font-semibold ${s.textPrimary} mb-3`}>Gerenciar histórico</h2>
 
         {sizeQ.data && (
           <p className={`text-sm ${s.textMuted} mb-4`}>
-            Histórico ocupa {sizeQ.data.total_mb} MB ({sizeQ.data.history_rows.toLocaleString('pt-BR')} verificações)
+            Histórico ocupa <strong className={s.textSecondary}>{sizeQ.data.total_mb} MB</strong> — {sizeQ.data.history_rows.toLocaleString('pt-BR')} verificações
           </p>
         )}
 
         <button onClick={() => setShowDeleteModal(true)} className={s.btnSecondary}>
-          🗑️ Limpar histórico
+          🗑️ Apagar todo o histórico
         </button>
 
         {cleanupMsg && (
-          <div className={`mt-3 ${cleanupMsg.ok ? s.alertSuccess : s.alertError}`}>
-            {cleanupMsg.text}
-          </div>
+          <div className={`mt-3 ${cleanupMsg.ok ? s.alertSuccess : s.alertError}`}>{cleanupMsg.text}</div>
         )}
       </section>
 
-      {/* Delete confirmation modal */}
       {showDeleteModal && (
-        <div className={s.overlay}>
-          <div className={s.modal}>
-            <div className={s.modalHeader}>
-              <h2 className={s.modalTitle}>Apagar todo o histórico?</h2>
-            </div>
-            <div className={s.modalBody}>
-              <p className={`text-sm ${s.textSecondary} leading-relaxed`}>
-                Isso vai apagar todos os registros de verificações anteriores.
-                Os seus links continuam funcionando normalmente — só o histórico
-                de checagens vai ser removido.
-              </p>
-            </div>
-            <div className={s.modalFooter}>
-              <button onClick={() => setShowDeleteModal(false)} className={s.btnSecondary}>
-                Cancelar
-              </button>
-              <button
-                onClick={() => deleteAll.mutate()}
-                disabled={deleteAll.isPending}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                {deleteAll.isPending ? 'Apagando...' : 'Sim, apagar tudo'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Apagar todo o histórico?"
+          body="Isso vai apagar todos os registros de verificações anteriores. Os seus links continuam funcionando normalmente — só o histórico de checagens vai ser removido."
+          confirmLabel="Sim, apagar tudo"
+          danger
+          isPending={deleteAll.isPending}
+          onConfirm={() => deleteAll.mutate()}
+          onCancel={() => setShowDeleteModal(false)}
+        />
       )}
     </div>
   );

@@ -12,6 +12,7 @@ export default function Settings() {
   const { user, setAuth } = useAuth();
   const qc = useQueryClient();
 
+  // — Alterar senha —
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [pwError, setPwError] = useState('');
@@ -23,11 +24,33 @@ export default function Settings() {
     onError: (e: any) => setPwError(e.response?.data?.message || '❌ Não foi possível alterar a senha. Tente de novo.')
   });
 
+  // — 2FA —
   const [totpStep, setTotpStep] = useState<'idle' | 'setup' | 'codes'>('idle');
   const [totpData, setTotpData] = useState<{ qrCodeDataUrl: string; secret: string } | null>(null);
   const [totpCode, setTotpCode] = useState('');
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [totpError, setTotpError] = useState('');
+
+  // Estado da exibição dos códigos de backup
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [codesCopied, setCodesCopied] = useState(false);
+  const [codesDownloaded, setCodesDownloaded] = useState(false);
+  const [copyAllMsg, setCopyAllMsg] = useState(false);
+
+  // Modal de desativar 2FA
+  const [disableModal, setDisableModal] = useState(false);
+  const [disablePw, setDisablePw] = useState('');
+  const [disableError, setDisableError] = useState('');
+
+  // Resetar estados ao entrar na etapa de exibição dos códigos
+  useEffect(() => {
+    if (totpStep === 'codes') {
+      setCopiedIndex(null);
+      setCodesCopied(false);
+      setCodesDownloaded(false);
+      setCopyAllMsg(false);
+    }
+  }, [totpStep]);
 
   const setup = useMutation({
     mutationFn: setupTotp,
@@ -52,8 +75,11 @@ export default function Settings() {
   });
 
   const disable = useMutation({
-    mutationFn: disableTotp,
+    mutationFn: () => disableTotp(disablePw),
     onSuccess: () => {
+      setDisableModal(false);
+      setDisablePw('');
+      setDisableError('');
       qc.invalidateQueries({ queryKey: ['me'] });
       const stored = localStorage.getItem('user');
       if (stored) {
@@ -62,21 +88,63 @@ export default function Settings() {
         const token = localStorage.getItem('access_token') ?? '';
         setAuth(token, u);
       }
-    }
+    },
+    onError: (e: any) => setDisableError(e.response?.data?.message || 'Senha incorreta. Tente novamente.')
   });
 
   const regenCodes = useMutation({
     mutationFn: regenerateBackupCodes,
-    onSuccess: (data) => setBackupCodes(data.backupCodes)
+    onSuccess: (data) => {
+      setBackupCodes(data.backupCodes);
+      setCopiedIndex(null);
+      setCodesCopied(false);
+      setCodesDownloaded(false);
+      setCopyAllMsg(false);
+    }
   });
 
+  // — Funções utilitárias para códigos de backup —
+  function copyCode(code: string, index: number) {
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  }
+
+  function copyAllBackupCodes() {
+    navigator.clipboard.writeText(backupCodes.join('\n')).catch(() => {});
+    setCodesCopied(true);
+    setCopyAllMsg(true);
+    setTimeout(() => setCopyAllMsg(false), 3000);
+  }
+
+  function downloadBackupCodes() {
+    const now = new Date().toLocaleString('pt-BR');
+    const text = [
+      '=== Redirect Admin — Códigos de Backup 2FA ===',
+      `Gerados em: ${now}`,
+      'ATENÇÃO: Cada código só pode ser usado UMA vez.',
+      'Guarde em local seguro e não compartilhe com ninguém.',
+      '',
+      ...backupCodes,
+    ].join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'redirect-admin-backup-codes.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    setCodesDownloaded(true);
+  }
+
+  // — Verificação de links —
   const [linkCheckResult, setLinkCheckResult] = useState<{ checked: number; broken: number; brokenItems: any[]; allResults: LinkCheckItem[] } | null>(null);
   const linkCheck = useMutation({
     mutationFn: checkLinks,
     onSuccess: (data) => setLinkCheckResult(data),
   });
 
-  // Monitor settings
+  // — Monitor de links —
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings, enabled: user?.role === 'admin' });
   const [monitorEnabled, setMonitorEnabled] = useState(false);
   const [monitorFreq, setMonitorFreq]       = useState(24);
@@ -101,7 +169,7 @@ export default function Settings() {
     onError: (e: any) => setMonitorError(e.response?.data?.message || '❌ Não foi possível salvar. Tente de novo.'),
   });
 
-  // Gemini key
+  // — Gemini —
   const [geminiKey, setGeminiKey] = useState('');
   const [geminiSaveStatus, setGeminiSaveStatus] = useState<'idle' | { ok: boolean; message: string }>('idle');
   const [geminiTestStatus, setGeminiTestStatus] = useState<'idle' | 'testing' | { ok: boolean; message: string }>('idle');
@@ -171,7 +239,7 @@ export default function Settings() {
         <p className={s.sub}>{user?.email} · {user?.role}</p>
       </div>
 
-      {/* Change password */}
+      {/* Alterar senha */}
       <section className={`${s.cardPad} mb-6`}>
         <h2 className={`font-semibold ${s.textPrimary} mb-4`}>Alterar senha</h2>
         {pwSuccess && <div className={`${s.alertSuccess} mb-4`}>✅ Pronto! A senha foi alterada.</div>}
@@ -249,7 +317,6 @@ export default function Settings() {
             Usada como fallback quando o sistema não consegue determinar automaticamente se um produto está disponível.
           </p>
 
-          {/* Gemini */}
           <div className="space-y-3">
             {settingsQ.data?.gemini_key_set ? (
               <>
@@ -372,7 +439,7 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Link health check — admin only */}
+      {/* Verificação de links — admin only */}
       {user?.role === 'admin' && (
         <section className={`${s.cardPad} mb-6`}>
           <h2 className={`font-semibold ${s.textPrimary} mb-1`}>Verificar links quebrados</h2>
@@ -432,7 +499,7 @@ export default function Settings() {
           </div>
           {user?.totp_enabled && totpStep === 'idle' && (
             <button
-              onClick={() => { if (confirm('Desativar 2FA?')) disable.mutate(); }}
+              onClick={() => { setDisableModal(true); setDisablePw(''); setDisableError(''); }}
               className={s.btnDanger}
             >
               Desativar
@@ -459,13 +526,37 @@ export default function Settings() {
               {regenCodes.isPending ? 'Gerando...' : 'Gerar novos códigos de backup'}
             </button>
             {backupCodes.length > 0 && (
-              <div className="mt-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <p className={`text-xs ${s.textSecondary} mb-2 font-medium`}>Novos códigos (guarde em local seguro):</p>
-                <div className="grid grid-cols-2 gap-1">
+              <div className="mt-3 space-y-3">
+                <div className={`${s.alertWarn}`}>
+                  <p className="font-semibold text-sm mb-1">⚠️ Novos códigos gerados! Guarde-os agora.</p>
+                  <p className="text-xs">Cada código só pode ser usado uma vez se você perder acesso ao autenticador.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                   {backupCodes.map((c, i) => (
-                    <code key={i} className={s.codeTag}>{c}</code>
+                    <div key={i} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2">
+                      <code className={`flex-1 font-mono text-sm ${s.textPrimary}`}>{c}</code>
+                      <button
+                        type="button"
+                        onClick={() => copyCode(c, i)}
+                        className="text-gray-400 hover:text-brand-500 transition-colors flex-shrink-0"
+                        title="Copiar este código"
+                      >
+                        {copiedIndex === i ? '✅' : '📋'}
+                      </button>
+                    </div>
                   ))}
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={copyAllBackupCodes} className={s.btnSecondary}>
+                    📋 Copiar todos
+                  </button>
+                  <button type="button" onClick={downloadBackupCodes} className={s.btnSecondary}>
+                    💾 Baixar .txt
+                  </button>
+                </div>
+                {copyAllMsg && (
+                  <div className={s.alertSuccess}>✅ Códigos copiados! Cole em um local seguro.</div>
+                )}
               </div>
             )}
           </div>
@@ -501,24 +592,111 @@ export default function Settings() {
         )}
 
         {totpStep === 'codes' && (
-          <div>
-            <div className={`${s.alertWarn} mb-4`}>
-              <p className="font-semibold mb-1">2FA ativado!</p>
-              <p className="text-xs">
-                Guarde estes códigos de backup em local seguro. Cada código pode ser usado uma vez se você perder acesso ao seu autenticador.
+          <div className="space-y-4">
+            {/* Aviso principal */}
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4">
+              <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm mb-1">
+                ⚠️ Guarde esses códigos agora! Eles não serão mostrados novamente.
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Use-os se perder acesso ao seu autenticador. Cada código só funciona uma vez.
               </p>
             </div>
+
+            {/* Grid de códigos com botão de copiar individual */}
             <div className="grid grid-cols-2 gap-2">
               {backupCodes.map((c, i) => (
-                <code key={i} className={`${s.codeTag} text-sm py-2 text-center block`}>{c}</code>
+                <div key={i} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2">
+                  <code className={`flex-1 font-mono text-sm ${s.textPrimary}`}>{c}</code>
+                  <button
+                    type="button"
+                    onClick={() => copyCode(c, i)}
+                    className="text-gray-400 hover:text-brand-500 transition-colors flex-shrink-0"
+                    title="Copiar este código"
+                  >
+                    {copiedIndex === i ? '✅' : '📋'}
+                  </button>
+                </div>
               ))}
             </div>
-            <button onClick={() => setTotpStep('idle')} className={`mt-4 ${s.btnPrimary}`}>
+
+            {/* Ações de exportação */}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={copyAllBackupCodes} className={s.btnSecondary}>
+                📋 Copiar todos os códigos
+              </button>
+              <button type="button" onClick={downloadBackupCodes} className={s.btnSecondary}>
+                💾 Baixar como .txt
+              </button>
+            </div>
+
+            {copyAllMsg && (
+              <div className={s.alertSuccess}>
+                ✅ Códigos copiados! Cole em um local seguro.
+              </div>
+            )}
+
+            {/* Aviso de confirmação + botão Concluir */}
+            {!codesCopied && !codesDownloaded && (
+              <p className={`text-xs ${s.textSecondary}`}>
+                Confirme que salvou os códigos para continuar
+              </p>
+            )}
+            <button
+              onClick={() => setTotpStep('idle')}
+              disabled={!codesCopied && !codesDownloaded}
+              className={s.btnPrimary}
+            >
               Concluir
             </button>
           </div>
         )}
       </section>
+
+      {/* Modal: Desativar 2FA */}
+      {disableModal && (
+        <div className={s.overlay}>
+          <div className={s.modal}>
+            <div className={s.modalHeader}>
+              <h3 className={s.modalTitle}>Desativar autenticação de dois fatores?</h3>
+            </div>
+            <div className={s.modalBody}>
+              <p className={`text-sm ${s.textSecondary}`}>
+                Isso vai remover a proteção extra da sua conta. Você precisará apenas de email e senha para entrar.
+              </p>
+              {disableError && <div className={s.alertError}>{disableError}</div>}
+              <div>
+                <label className={s.label}>Digite sua senha atual para confirmar</label>
+                <input
+                  type="password"
+                  value={disablePw}
+                  onChange={(e) => { setDisablePw(e.target.value); setDisableError(''); }}
+                  className={s.input}
+                  placeholder="Sua senha atual"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && disablePw && disable.mutate()}
+                />
+              </div>
+            </div>
+            <div className={s.modalFooter}>
+              <button
+                onClick={() => { setDisableModal(false); setDisablePw(''); setDisableError(''); }}
+                className={s.btnSecondary}
+                disabled={disable.isPending}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => disable.mutate()}
+                disabled={disable.isPending || !disablePw.trim()}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {disable.isPending ? 'Desativando...' : 'Desativar 2FA'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

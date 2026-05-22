@@ -7,18 +7,18 @@ import {
 import { s } from '../lib/styles';
 
 const PLATFORMS = [
-  { value: 'youtube', label: 'YouTube', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
-  { value: 'instagram', label: 'Instagram', color: 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400' },
-  { value: 'tiktok', label: 'TikTok', color: 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300' },
-  { value: 'facebook', label: 'Facebook', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
-  { value: 'x', label: 'X (Twitter)', color: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' },
-  { value: 'other', label: 'Outro', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
+  { value: 'youtube',   label: 'YouTube',    color: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  { value: 'instagram', label: 'Instagram',  color: 'bg-pink-500/10 text-pink-400 border-pink-500/20' },
+  { value: 'tiktok',    label: 'TikTok',     color: 'bg-slate-500/10 text-slate-400 border-slate-500/20' },
+  { value: 'facebook',  label: 'Facebook',   color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  { value: 'x',         label: 'X (Twitter)', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
+  { value: 'other',     label: 'Outro',      color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
 ];
 
 function PlatformBadge({ platform }: { platform: string }) {
   const p = PLATFORMS.find((x) => x.value === platform);
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p?.color ?? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${p?.color ?? 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`}>
       {p?.label ?? platform}
     </span>
   );
@@ -33,6 +33,93 @@ const EMPTY: FormState = {
   telegram_bot_token: '', telegram_chat_id: '',
   newDomainHostname: '', domainMode: 'existing',
 };
+
+// ── Profile Card ──────────────────────────────────────────────────────────────
+
+function ProfileCard({ profile, onEdit, onDelete, onTest, testPending, testStatus }: {
+  profile: any;
+  onEdit: () => void;
+  onDelete: () => void;
+  onTest: () => void;
+  testPending: boolean;
+  testStatus: { ok: boolean; msg: string } | null;
+}) {
+  const initial = profile.name?.[0]?.toUpperCase() ?? '?';
+
+  return (
+    <div className="bg-white dark:bg-gh-card border border-gray-200 dark:border-white/[0.08] rounded-xl p-5 flex flex-col gap-4 hover:-translate-y-0.5 transition-transform duration-200 hover:border-gray-300 dark:hover:border-white/[0.14]">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-full bg-brand-500/15 flex items-center justify-center text-brand-400 text-lg font-bold flex-shrink-0 select-none">
+            {initial}
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-gh-text text-sm">{profile.name}</p>
+            <div className="mt-0.5">
+              <PlatformBadge platform={profile.platform} />
+            </div>
+          </div>
+        </div>
+        <span className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          Ativo
+        </span>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="bg-gray-50 dark:bg-gh-over/50 rounded-lg px-3 py-2">
+          <p className="text-xs text-gray-500 dark:text-gh-muted mb-0.5">Campanhas</p>
+          <p className="font-semibold text-gray-900 dark:text-gh-text">{profile.campaign_count ?? 0}</p>
+        </div>
+        <div className="bg-gray-50 dark:bg-gh-over/50 rounded-lg px-3 py-2 min-w-0">
+          <p className="text-xs text-gray-500 dark:text-gh-muted mb-0.5">Domínio</p>
+          <p className="font-mono text-xs text-gray-700 dark:text-gh-text truncate" title={profile.domain_hostname}>
+            {profile.domain_hostname ?? '—'}
+          </p>
+        </div>
+      </div>
+
+      {/* Telegram */}
+      {profile.telegram_chat_id ? (
+        <div className="flex items-center justify-between border-t border-gray-100 dark:border-white/[0.06] pt-3 text-xs">
+          <span className="flex items-center gap-1.5 text-gray-500 dark:text-gh-muted">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+            Telegram configurado
+          </span>
+          <button
+            onClick={onTest}
+            disabled={testPending}
+            className="text-brand-500 hover:text-brand-400 disabled:opacity-50 transition-colors text-xs font-medium"
+          >
+            {testPending ? 'Testando...' : 'Testar'}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5 border-t border-gray-100 dark:border-white/[0.06] pt-3 text-xs text-gray-400 dark:text-gh-muted">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gh-muted inline-block" />
+          Telegram não configurado
+        </div>
+      )}
+
+      {testStatus && (
+        <p className={`text-xs ${testStatus.ok ? 'text-emerald-500' : 'text-red-400'}`}>{testStatus.msg}</p>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2 pt-1">
+        <button onClick={onEdit} className="flex-1 text-xs font-medium py-1.5 px-3 rounded-lg border border-gray-200 dark:border-white/[0.12] text-gray-600 dark:text-gh-muted hover:text-gray-900 dark:hover:text-gh-text hover:border-gray-300 dark:hover:border-white/[0.2] transition-colors">
+          Editar
+        </button>
+        <button onClick={onDelete} className="text-xs font-medium py-1.5 px-3 rounded-lg border border-red-200 dark:border-red-500/20 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+          Excluir
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Profiles() {
   const qc = useQueryClient();
@@ -72,7 +159,7 @@ export default function Profiles() {
   const testBot = useMutation({
     mutationFn: (id: number) => testTelegramBot(id),
     onSuccess: (_, id) => setTgStatus({ id, ok: true, msg: '✅ Mensagem enviada! Verifique seu Telegram.' }),
-    onError: (e: any, id) => setTgStatus({ id, ok: false, msg: e.response?.data?.message || '❌ Não foi possível enviar. Verifique o token e tente de novo.' }),
+    onError: (e: any, id) => setTgStatus({ id, ok: false, msg: e.response?.data?.message || '❌ Não foi possível enviar.' }),
   });
 
   function openCreate() { setEditing(null); setForm(EMPTY); setError(''); setShowModal(true); }
@@ -91,6 +178,8 @@ export default function Profiles() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  const list = profiles.data ?? [];
+
   return (
     <div className={s.page}>
       <div className="flex items-center justify-between mb-6">
@@ -101,74 +190,40 @@ export default function Profiles() {
         <button onClick={openCreate} className={s.btnPrimary}>+ Novo perfil</button>
       </div>
 
-      <div className={s.tableWrap}>
-        <table className="w-full text-sm">
-          <thead className={s.thead}>
-            <tr>
-              {['Nome', 'Plataforma', 'Domínio', 'Telegram', 'Campanhas', ''].map((h) => (
-                <th key={h} className={s.th}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className={s.tdDiv}>
-            {(profiles.data ?? []).map((p: any) => (
-              <tr key={p.id} className={s.tr}>
-                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.name}</td>
-                <td className="px-6 py-4"><PlatformBadge platform={p.platform} /></td>
-                <td className="px-6 py-4">
-                  <code className={s.codeTag}>{p.domain_hostname ?? '—'}</code>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    {p.telegram_chat_id ? (
-                      <>
-                        <span className="text-green-600 dark:text-green-400 text-xs font-medium">✓ Configurado</span>
-                        <button
-                          onClick={() => { setTgStatus(null); testBot.mutate(p.id); }}
-                          disabled={testBot.isPending && testBot.variables === p.id}
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-                        >
-                          {testBot.isPending && testBot.variables === p.id ? 'Testando...' : 'Testar'}
-                        </button>
-                      </>
-                    ) : (
-                      <span className={`${s.textMuted} text-xs`}>—</span>
-                    )}
-                  </div>
-                  {tgStatus && tgStatus.id === p.id && (
-                    <p className={`text-xs mt-1 ${tgStatus.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
-                      {tgStatus.ok ? '✅' : '❌'} {tgStatus.msg}
-                    </p>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{p.campaign_count}</td>
-                <td className="px-6 py-4 text-right space-x-3">
-                  <button onClick={() => openEdit(p)} className={s.btnLink}>Editar</button>
-                  <button
-                    onClick={() => { if (confirm('Excluir este perfil?')) remove.mutate(p.id); }}
-                    className={s.btnDanger}
-                  >
-                    Excluir
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {profiles.data?.length === 0 && (
-              <tr>
-                <td colSpan={6} className={`px-6 py-10 text-center ${s.textMuted} text-sm`}>
-                  Nenhum perfil cadastrado ainda.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {profiles.isLoading && (
+        <p className={`${s.textMuted} text-sm`}>Carregando...</p>
+      )}
+
+      {/* Card grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {list.map((p: any) => (
+          <ProfileCard
+            key={p.id}
+            profile={p}
+            onEdit={() => openEdit(p)}
+            onDelete={() => { if (confirm('Excluir este perfil?')) remove.mutate(p.id); }}
+            onTest={() => { setTgStatus(null); testBot.mutate(p.id); }}
+            testPending={testBot.isPending && testBot.variables === p.id}
+            testStatus={tgStatus?.id === p.id ? tgStatus : null}
+          />
+        ))}
+
+        {/* Add new card */}
+        <button
+          onClick={openCreate}
+          className="border-2 border-dashed border-gray-200 dark:border-white/[0.1] hover:border-brand-400 dark:hover:border-brand-500/50 rounded-xl p-5 flex flex-col items-center justify-center gap-2 min-h-[180px] text-gray-400 dark:text-gh-muted hover:text-brand-500 dark:hover:text-brand-400 transition-all duration-200 group"
+        >
+          <span className="text-3xl font-light leading-none group-hover:scale-110 transition-transform">+</span>
+          <span className="text-sm font-medium">Adicionar novo perfil</span>
+        </button>
       </div>
 
+      {/* Modal */}
       {showModal && (
         <div className={s.overlay}>
           <div className={`${s.modal} max-h-[90vh] overflow-y-auto`}>
-            <div className={`${s.modalHeader} sticky top-0`} style={{ background: 'inherit' }}>
-              <h2 className={s.modalTitle}>{editing ? 'Editar perfil' : 'Novo perfil'}</h2>
+            <div className={`${s.modalHeader} sticky top-0 bg-white dark:bg-gh-card z-10`}>
+              <h2 className={s.modalTitle}>{editing ? 'Editar perfil' : 'Adicionar perfil'}</h2>
             </div>
             <div className={s.modalBody}>
               {error && <div className={s.alertError}>{error}</div>}
@@ -185,16 +240,15 @@ export default function Profiles() {
                 </select>
               </div>
 
-              {/* Domain toggle */}
               <div>
                 <label className={`${s.label} mb-2`}>Domínio dos links curtos</label>
                 <div className="flex gap-2 mb-3">
                   {(['existing', 'new'] as const).map((mode) => (
                     <button key={mode} type="button" onClick={() => field('domainMode', mode)}
-                      className={`flex-1 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                      className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                         form.domainMode === mode
-                          ? 'bg-brand-600 text-white border-brand-600'
-                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-gray-400'
+                          ? 'bg-brand-500 text-white border-brand-500'
+                          : 'bg-white dark:bg-gh-over text-gray-600 dark:text-gh-muted border-gray-300 dark:border-white/[0.12] hover:border-gray-400 dark:hover:border-white/[0.2]'
                       }`}>
                       {mode === 'existing' ? 'Selecionar existente' : 'Cadastrar novo'}
                     </button>
@@ -214,8 +268,8 @@ export default function Profiles() {
                 )}
               </div>
 
-              <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Telegram (opcional)</p>
+              <div className="border-t border-gray-100 dark:border-white/[0.08] pt-4">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gh-muted uppercase tracking-wide mb-3">Telegram (opcional)</p>
                 <div className="space-y-3">
                   <div>
                     <label className={s.label}>Token do bot</label>
@@ -230,7 +284,7 @@ export default function Profiles() {
                 </div>
               </div>
             </div>
-            <div className={`${s.modalFooter} sticky bottom-0 bg-white dark:bg-gray-800`}>
+            <div className={`${s.modalFooter} sticky bottom-0 bg-white dark:bg-gh-card z-10`}>
               <button onClick={closeModal} className={s.btnSecondary}>Cancelar</button>
               <button onClick={() => save.mutate()} disabled={save.isPending} className={s.btnPrimary}>
                 {save.isPending ? 'Salvando...' : 'Salvar'}
