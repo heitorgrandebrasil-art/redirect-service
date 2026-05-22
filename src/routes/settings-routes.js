@@ -140,7 +140,7 @@ export default async function settingsRoutes(fastify) {
          WHERE cycle_month = $1`,
         [currentMonth]
       ),
-      query(`SELECT COUNT(*) AS cnt FROM products WHERE link_status = 'human_review'`),
+      query(`SELECT COUNT(*) AS cnt FROM products WHERE link_status = 'human_review' AND video_id IS NOT NULL`),
       query(`
         SELECT
           COUNT(*) FILTER (WHERE gemini_said IS NOT NULL)                               AS gemini_total,
